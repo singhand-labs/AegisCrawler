@@ -71,10 +71,10 @@ jobs:
         run: cd server && go build ./...
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@988b5a0280414a521613019c58d62d4e43600050 # v3.6.1
+        uses: docker/setup-buildx-action@988b5a0280414f521da01fcc63a27aeeb4b104db # v3.6.1
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@9780b0c244f810e429c5d3e1fde574b9f20b77c2 # v3.3.0
+        uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567 # v3.3.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -93,7 +93,7 @@ jobs:
           echo "tags=${TAGS}" >> "$GITHUB_OUTPUT"
 
       - name: Build and push server image
-        uses: docker/build-push-action@ca052bb54ab79b4e17f9aa9ace771ca5a3aa6b91 # v5.4.0
+        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5.4.0
         with:
           context: .
           file: ./server/Dockerfile
