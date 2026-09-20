@@ -84,7 +84,7 @@ jobs:
         id: meta
         run: |
           VERSION=${GITHUB_REF_NAME#v}
-          IMAGE=ghcr.io/${{ github.repository }}
+          IMAGE=ghcr.io/$(printf "%s" "${{ github.repository }}" | tr "[:upper:]" "[:lower:]")
           TAGS="${IMAGE}:${VERSION}"
           if [[ "$VERSION" != *-* ]]; then
             TAGS="${TAGS},${IMAGE}:latest"
