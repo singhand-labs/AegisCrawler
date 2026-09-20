@@ -1,0 +1,4665 @@
+basePath: /
+definitions:
+  api.AdoptDSLAttemptExportRequest:
+    properties:
+      browserProfileId:
+        type: string
+      export:
+        type: object
+    type: object
+  api.CheckpointRequest:
+    properties:
+      name:
+        example: after-login
+        type: string
+      payload:
+        $ref: '#/definitions/api.jsonRaw'
+      taskId:
+        example: task-uuid
+        type: string
+      workerId:
+        example: worker-1
+        type: string
+    type: object
+  api.CheckpointResponse:
+    properties:
+      createdAt:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      payload:
+        $ref: '#/definitions/api.jsonRaw'
+      taskId:
+        type: string
+      workerId:
+        type: string
+    type: object
+  api.ClaimTaskRequest:
+    properties:
+      browserProfileId:
+        example: production-account
+        type: string
+      workerId:
+        example: worker-1
+        type: string
+    type: object
+  api.ClaimTaskResponse:
+    properties:
+      attemptId:
+        example: attempt-uuid
+        type: string
+      browserProfileId:
+        type: string
+      leaseUntil:
+        type: string
+      rule:
+        $ref: '#/definitions/models.Rule'
+      ruleId:
+        example: ecommerce-product-list
+        type: string
+      ruleVersion:
+        example: 1.0.0
+        type: string
+      ruleVersionNumber:
+        example: 1
+        type: integer
+      sourceArtifactHash:
+        type: string
+      sourceAuthority:
+        type: string
+      sourceExportHash:
+        type: string
+      sourceKind:
+        type: string
+      sourceWorkflowId:
+        type: string
+      taskId:
+        example: task-uuid
+        type: string
+      variables:
+        $ref: '#/definitions/api.jsonRaw'
+      workspaceId:
+        example: default
+        type: string
+    type: object
+  api.CollectionRequirementResponse:
+    properties:
+      requirement:
+        $ref: '#/definitions/models.CollectionRequirement'
+    type: object
+  api.CorrectDSLWorkflowRequest:
+    properties:
+      rule:
+        type: object
+    type: object
+  api.CreateDSLWorkflowRequest:
+    properties:
+      baselineRule:
+        type: object
+      browserProfileId:
+        type: string
+    type: object
+  api.CreateHumanInterventionRequest:
+    properties:
+      attemptId:
+        example: attempt-uuid
+        type: string
+      checkpoint:
+        $ref: '#/definitions/api.HumanCheckpointRequest'
+      prompt:
+        example: Complete two-factor authentication, then approve resume.
+        type: string
+      timeoutMs:
+        example: 120000
+        type: integer
+      type:
+        example: 2fa
+        type: string
+      workerId:
+        example: worker-1
+        type: string
+    type: object
+  api.CreateMCPTokenRequest:
+    properties:
+      expiresAt:
+        type: string
+      name:
+        type: string
+      permissions:
+        items:
+          type: string
+        type: array
+    type: object
+  api.CreateRuleVersionRequest:
+    properties:
+      recordingId:
+        type: string
+      rule:
+        $ref: '#/definitions/models.Rule'
+    type: object
+  api.CreateScheduleRequest:
+    properties:
+      browserProfileId:
+        type: string
+      catchup:
+        type: string
+      enabled:
+        type: boolean
+      expression:
+        type: string
+      maxRetries:
+        type: integer
+      name:
+        type: string
+      priority:
+        type: string
+      ruleId:
+        type: string
+      ruleVersion:
+        type: string
+      ruleVersionNumber:
+        type: integer
+      timezone:
+        type: string
+      type:
+        type: string
+      variables:
+        $ref: '#/definitions/api.jsonRaw'
+    type: object
+  api.CreateTaskRequest:
+    properties:
+      browserProfileId:
+        type: string
+      maxRetries:
+        type: integer
+      priority:
+        type: string
+      ruleId:
+        type: string
+      ruleVersion:
+        type: string
+      ruleVersionNumber:
+        type: integer
+      scheduledAt:
+        type: string
+      variables:
+        $ref: '#/definitions/api.jsonRaw'
+    type: object
+  api.DSLJobResponse:
+    properties:
+      job:
+        $ref: '#/definitions/models.DSLJob'
+      statusUrl:
+        type: string
+    type: object
+  api.DSLProviderAttemptListResponse:
+    properties:
+      attempts:
+        items:
+          $ref: '#/definitions/models.LLMAttemptReport'
+        type: array
+    type: object
+  api.DSLProviderAttemptResponse:
+    properties:
+      artifact:
+        type: object
+      attempt:
+        $ref: '#/definitions/models.LLMAttemptReport'
+      calls:
+        items:
+          $ref: '#/definitions/models.LLMProviderCall'
+        type: array
+    type: object
+  api.DSLProviderCallContentResponse:
+    properties:
+      call:
+        $ref: '#/definitions/models.LLMProviderCall'
+      content:
+        type: object
+    type: object
+  api.DSLReplayResponse:
+    properties:
+      repairJob:
+        $ref: '#/definitions/models.DSLJob'
+      replay:
+        $ref: '#/definitions/models.ReplayAttempt'
+    type: object
+  api.DSLWorkflowResponse:
+    properties:
+      job:
+        $ref: '#/definitions/models.DSLJob'
+      statusUrl:
+        type: string
+      workflow:
+        $ref: '#/definitions/models.DSLWorkflow'
+    type: object
+  api.DecideHumanInterventionRequest:
+    properties:
+      checkpointId:
+        example: checkpoint-uuid
+        type: string
+      decision:
+        example: approved
+        type: string
+      note:
+        example: Operator completed the approved step.
+        type: string
+    type: object
+  api.EnhanceRuleRequest:
+    properties:
+      baselineRule:
+        type: object
+      recording:
+        type: object
+      userHint:
+        type: string
+    type: object
+  api.EnhanceRuleResponse:
+    properties:
+      jobId:
+        type: string
+      statusUrl:
+        type: string
+    type: object
+  api.ErrorResponse:
+    properties:
+      code:
+        example: NOT_FOUND
+        type: string
+      details:
+        type: string
+      error:
+        example: task not found
+        type: string
+    type: object
+  api.GenerateFromIntentRequest:
+    properties:
+      baselineRule:
+        type: object
+      customDescription:
+        type: string
+      intent:
+        type: object
+      recording:
+        type: object
+    type: object
+  api.GenerateFromIntentResponse:
+    properties:
+      rule:
+        type: object
+      yaml:
+        type: string
+    type: object
+  api.HeartbeatRequest:
+    properties:
+      payload:
+        $ref: '#/definitions/api.jsonRaw'
+      taskId:
+        example: task-uuid
+        type: string
+      workerId:
+        example: worker-1
+        type: string
+    type: object
+  api.HeartbeatResponse:
+    properties:
+      cancelRequested:
+        example: false
+        type: boolean
+      success:
+        example: true
+        type: boolean
+    type: object
+  api.HumanCheckpointRequest:
+    properties:
+      stepId:
+        example: confirm-login
+        type: string
+      url:
+        example: https://example.com/account
+        type: string
+    type: object
+  api.HumanInterventionResponse:
+    properties:
+      intervention:
+        $ref: '#/definitions/models.HumanIntervention'
+    type: object
+  api.IntentCandidate:
+    properties:
+      confidence:
+        type: number
+      description:
+        type: string
+      id:
+        type: string
+      label:
+        type: string
+      suggestedVariables:
+        items:
+          type: string
+        type: array
+    type: object
+  api.LLMAttemptLimitsResponse:
+    properties:
+      dslGenerationMaxAttempts:
+        type: integer
+      dslMaxRepairs:
+        type: integer
+      requirementMaxAttempts:
+        type: integer
+      selectorMaxRepairs:
+        type: integer
+    type: object
+  api.LLMBudgetResponse:
+    properties:
+      budgetDay:
+        type: string
+      global:
+        $ref: '#/definitions/api.LLMBudgetScopeResponse'
+      workspace:
+        $ref: '#/definitions/api.LLMBudgetScopeResponse'
+    type: object
+  api.LLMBudgetScopeResponse:
+    properties:
+      activeReservedUsd:
+        type: string
+      dailyBudgetUsd:
+        type: string
+      maxRequestUsd:
+        type: string
+      remainingUsd:
+        type: string
+      settledUsd:
+        type: string
+      uncertainCalls:
+        type: integer
+    type: object
+  api.LLMPolicyResponse:
+    properties:
+      attemptLimits:
+        $ref: '#/definitions/api.LLMAttemptLimitsResponse'
+      budgetLedgerBound:
+        type: boolean
+      enabled:
+        type: boolean
+      fallback:
+        $ref: '#/definitions/api.LLMRouteResponse'
+      fallbackTaxonomy:
+        items:
+          type: string
+        type: array
+      fingerprint:
+        type: string
+      mode:
+        type: string
+      primary:
+        $ref: '#/definitions/api.LLMRouteResponse'
+      productionEligible:
+        type: boolean
+      reconciled:
+        type: boolean
+    type: object
+  api.LLMRouteResponse:
+    properties:
+      adapter:
+        type: string
+      cachedInputUsdPerMillion:
+        type: string
+      enableThinking:
+        type: boolean
+      endpoint:
+        type: string
+      inputUsdPerMillion:
+        type: string
+      maxInputTokens:
+        type: integer
+      maxOutputTokens:
+        type: integer
+      model:
+        type: string
+      outputCapDialect:
+        type: string
+      outputUsdPerMillion:
+        type: string
+      priceRevision:
+        type: string
+      productionEligible:
+        type: boolean
+      provider:
+        type: string
+      requestTimeout:
+        type: string
+      slot:
+        type: string
+      strictToolOutput:
+        type: boolean
+      temperature:
+        type: string
+      worstCaseRequestUsd:
+        type: string
+    type: object
+  api.ListAuditLogsResponse:
+    properties:
+      logs:
+        items:
+          $ref: '#/definitions/models.AuditLog'
+        type: array
+      total:
+        type: integer
+    type: object
+  api.ListHumanInterventionsResponse:
+    properties:
+      interventions:
+        items:
+          $ref: '#/definitions/models.HumanIntervention'
+        type: array
+    type: object
+  api.ListMCPTokensResponse:
+    properties:
+      tokens:
+        items:
+          $ref: '#/definitions/api.MCPTokenResponse'
+        type: array
+    type: object
+  api.ListRuleVersionsResponse:
+    properties:
+      contracts:
+        items:
+          $ref: '#/definitions/models.RuleVersionContract'
+        type: array
+      ruleVersions:
+        items:
+          $ref: '#/definitions/models.RuleVersion'
+        type: array
+    type: object
+  api.ListRulesResponse:
+    properties:
+      rules:
+        items:
+          $ref: '#/definitions/api.RuleResponse'
+        type: array
+      total:
+        type: integer
+    type: object
+  api.ListSchedulesResponse:
+    properties:
+      schedules:
+        items:
+          $ref: '#/definitions/api.ScheduleResponse'
+        type: array
+      total:
+        type: integer
+    type: object
+  api.ListTasksResponse:
+    properties:
+      tasks:
+        items:
+          $ref: '#/definitions/api.TaskResponse'
+        type: array
+      total:
+        type: integer
+    type: object
+  api.LogRequest:
+    properties:
+      extra:
+        $ref: '#/definitions/api.jsonRaw'
+      level:
+        example: info
+        type: string
+      message:
+        example: page loaded
+        type: string
+      taskId:
+        example: task-uuid
+        type: string
+      workerId:
+        example: worker-1
+        type: string
+    type: object
+  api.MCPTokenResponse:
+    properties:
+      createdAt:
+        type: string
+      createdBy:
+        type: string
+      expiresAt:
+        type: string
+      id:
+        type: string
+      lastUsedAt:
+        type: string
+      name:
+        type: string
+      permissions:
+        items:
+          type: string
+        type: array
+      revokedAt:
+        type: string
+      token:
+        type: string
+      tokenPrefix:
+        type: string
+      workspaceId:
+        type: string
+    type: object
+  api.NormalizeRequirementRequest:
+    properties:
+      candidateId:
+        type: string
+      candidateJobId:
+        type: string
+      customText:
+        type: string
+      requirement:
+        $ref: '#/definitions/models.CollectionRequirementSpec'
+    type: object
+  api.PredictIntentRequest:
+    properties:
+      recording:
+        type: object
+    type: object
+  api.PredictIntentResponse:
+    properties:
+      cacheHit:
+        type: boolean
+      candidates:
+        items:
+          $ref: '#/definitions/api.IntentCandidate'
+        type: array
+      fallbackIntent:
+        $ref: '#/definitions/api.IntentCandidate'
+      model:
+        type: string
+    type: object
+  api.PreviewScheduleResponse:
+    properties:
+      expression:
+        type: string
+      runs:
+        items:
+          type: string
+        type: array
+      timezone:
+        type: string
+    type: object
+  api.RequirementJobResponse:
+    properties:
+      job:
+        $ref: '#/definitions/models.RequirementJob'
+      statusUrl:
+        type: string
+    type: object
+  api.RequirementProviderAttemptListResponse:
+    properties:
+      attempts:
+        items:
+          $ref: '#/definitions/models.LLMAttemptReport'
+        type: array
+    type: object
+  api.RequirementProviderAttemptResponse:
+    properties:
+      artifact:
+        type: object
+      attempt:
+        $ref: '#/definitions/models.LLMAttemptReport'
+      calls:
+        items:
+          $ref: '#/definitions/models.LLMProviderCall'
+        type: array
+    type: object
+  api.RequirementProviderCallContentResponse:
+    properties:
+      call:
+        $ref: '#/definitions/models.LLMProviderCall'
+      content:
+        type: object
+    type: object
+  api.ResultRequest:
+    properties:
+      attemptId:
+        example: attempt-uuid
+        type: string
+      idempotencyKey:
+        example: attempt-uuid:1:batch
+        type: string
+      immediate:
+        example: true
+        type: boolean
+      kind:
+        example: batch
+        type: string
+      payload:
+        type: object
+      sequence:
+        example: 1
+        type: integer
+      taskId:
+        example: task-uuid
+        type: string
+      workerId:
+        example: worker-1
+        type: string
+    type: object
+  api.ResultSubmissionResponse:
+    properties:
+      duplicate:
+        type: boolean
+      error:
+        type: string
+      success:
+        type: boolean
+      valid:
+        type: boolean
+    type: object
+  api.RuleEnhancementResponse:
+    properties:
+      baseline:
+        type: object
+      createdAt:
+        type: string
+      enhanced:
+        type: object
+      id:
+        type: string
+      inputTokens:
+        type: integer
+      model:
+        type: string
+      outputTokens:
+        type: integer
+      patch:
+        type: object
+      provider:
+        type: string
+      ruleId:
+        type: string
+      safetyFlags:
+        items:
+          type: object
+        type: array
+      status:
+        type: string
+      suggestions:
+        items:
+          type: string
+        type: array
+      userHint:
+        type: string
+      workspaceId:
+        type: string
+    type: object
+  api.RuleResponse:
+    properties:
+      approvalStatus:
+        type: string
+      createdAt:
+        type: string
+      domain:
+        type: object
+      enabled:
+        type: boolean
+      entry:
+        type: string
+      hooks:
+        $ref: '#/definitions/api.jsonRaw'
+      humanize:
+        $ref: '#/definitions/api.jsonRaw'
+      id:
+        example: ecommerce-product-list
+        type: string
+      name:
+        example: 电商商品列表采集
+        type: string
+      output:
+        $ref: '#/definitions/api.jsonRaw'
+      owner:
+        type: string
+      priority:
+        example: normal
+        type: string
+      selectors:
+        $ref: '#/definitions/api.jsonRaw'
+      sendPolicy:
+        $ref: '#/definitions/api.jsonRaw'
+      source:
+        type: string
+      steps:
+        type: object
+      tags:
+        $ref: '#/definitions/api.jsonRaw'
+      updatedAt:
+        type: string
+      urlPattern:
+        type: object
+      variables:
+        $ref: '#/definitions/api.jsonRaw'
+      version:
+        example: 1.0.0
+        type: string
+      workspaceId:
+        example: default
+        type: string
+    type: object
+  api.RuleVersionResponse:
+    properties:
+      contract:
+        $ref: '#/definitions/models.RuleVersionContract'
+      ruleVersion:
+        $ref: '#/definitions/models.RuleVersion'
+    type: object
+  api.ScheduleResponse:
+    properties:
+      browserProfileId:
+        type: string
+      catchup:
+        type: string
+      createdAt:
+        type: string
+      enabled:
+        type: boolean
+      expression:
+        type: string
+      id:
+        type: string
+      inputSchema:
+        $ref: '#/definitions/api.jsonRaw'
+      lastRunAt:
+        type: string
+      maxRetries:
+        type: integer
+      name:
+        type: string
+      nextRunAt:
+        type: string
+      priority:
+        type: string
+      ruleId:
+        type: string
+      ruleVersion:
+        type: string
+      ruleVersionNumber:
+        type: integer
+      timezone:
+        type: string
+      type:
+        type: string
+      updatedAt:
+        type: string
+      variables:
+        $ref: '#/definitions/api.jsonRaw'
+      workspaceId:
+        type: string
+    type: object
+  api.SnapshotRequest:
+    properties:
+      data:
+        type: string
+      name:
+        example: error-screenshot
+        type: string
+      taskId:
+        example: task-uuid
+        type: string
+      type:
+        example: html
+        type: string
+      workerId:
+        example: worker-1
+        type: string
+    type: object
+  api.StatusRequest:
+    properties:
+      attemptId:
+        example: attempt-uuid
+        type: string
+      message:
+        example: started extraction
+        type: string
+      status:
+        example: running
+        type: string
+      taskId:
+        example: task-uuid
+        type: string
+      workerId:
+        example: worker-1
+        type: string
+    type: object
+  api.SuccessResponse:
+    properties:
+      success:
+        example: true
+        type: boolean
+    type: object
+  api.TaskResponse:
+    properties:
+      browserProfileId:
+        type: string
+      cancelRequested:
+        type: boolean
+      completedAt:
+        type: string
+      createdAt:
+        type: string
+      currentAttemptId:
+        type: string
+      errorMessage:
+        type: string
+      errorType:
+        type: string
+      id:
+        type: string
+      inputSchema:
+        $ref: '#/definitions/api.jsonRaw'
+      leaseUntil:
+        type: string
+      maxRetries:
+        type: integer
+      outputSchema:
+        $ref: '#/definitions/api.jsonRaw'
+      priority:
+        type: string
+      retryCount:
+        type: integer
+      ruleId:
+        type: string
+      ruleVersion:
+        type: string
+      ruleVersionNumber:
+        type: integer
+      scheduleId:
+        type: string
+      scheduledAt:
+        type: string
+      sendPolicy:
+        $ref: '#/definitions/api.jsonRaw'
+      sourceArtifactHash:
+        type: string
+      sourceAuthority:
+        type: string
+      sourceExportHash:
+        type: string
+      sourceKind:
+        type: string
+      sourceWorkflowId:
+        type: string
+      status:
+        type: string
+      updatedAt:
+        type: string
+      variables:
+        $ref: '#/definitions/api.jsonRaw'
+      workerId:
+        type: string
+      workspaceId:
+        type: string
+    type: object
+  api.TaskResultsResponse:
+    properties:
+      outputSchema:
+        $ref: '#/definitions/api.jsonRaw'
+      page:
+        $ref: '#/definitions/models.ResultPage'
+      ruleId:
+        type: string
+      ruleVersion:
+        type: string
+      ruleVersionNumber:
+        type: integer
+      sourceArtifactHash:
+        type: string
+      sourceAuthority:
+        type: string
+      sourceExportHash:
+        type: string
+      sourceKind:
+        type: string
+      sourceWorkflowId:
+        type: string
+      taskId:
+        type: string
+    type: object
+  api.TriggerScheduleResponse:
+    properties:
+      taskId:
+        type: string
+    type: object
+  api.UpdateRuleRequest:
+    properties:
+      approvalStatus:
+        type: string
+      domain:
+        type: object
+      enabled:
+        type: boolean
+      entry:
+        type: string
+      hooks:
+        $ref: '#/definitions/api.jsonRaw'
+      humanize:
+        $ref: '#/definitions/api.jsonRaw'
+      name:
+        type: string
+      output:
+        $ref: '#/definitions/api.jsonRaw'
+      owner:
+        type: string
+      priority:
+        type: string
+      selectors:
+        $ref: '#/definitions/api.jsonRaw'
+      sendPolicy:
+        $ref: '#/definitions/api.jsonRaw'
+      source:
+        type: string
+      steps:
+        type: object
+      tags:
+        $ref: '#/definitions/api.jsonRaw'
+      urlPattern:
+        type: object
+      variables:
+        $ref: '#/definitions/api.jsonRaw'
+      version:
+        type: string
+    type: object
+  api.UpdateScheduleRequest:
+    properties:
+      browserProfileId:
+        type: string
+      catchup:
+        type: string
+      enabled:
+        type: boolean
+      expression:
+        type: string
+      maxRetries:
+        type: integer
+      name:
+        type: string
+      priority:
+        type: string
+      ruleVersion:
+        type: string
+      ruleVersionNumber:
+        type: integer
+      timezone:
+        type: string
+      variables:
+        $ref: '#/definitions/api.jsonRaw'
+    type: object
+  api.WorkerHumanIntervention:
+    properties:
+      attemptId:
+        type: string
+      checkpointId:
+        type: string
+      expiresAt:
+        type: string
+      id:
+        type: string
+      status:
+        $ref: '#/definitions/models.HumanInterventionStatus'
+      taskId:
+        type: string
+    type: object
+  api.WorkerHumanInterventionResponse:
+    properties:
+      intervention:
+        $ref: '#/definitions/api.WorkerHumanIntervention'
+    type: object
+  api.jsonRaw:
+    additionalProperties: {}
+    type: object
+  dsl.ReplayCompletionInput:
+    properties:
+      artifacts:
+        items:
+          $ref: '#/definitions/models.ReplayArtifact'
+        type: array
+      diagnostics:
+        type: object
+      errorCode:
+        type: string
+      errorMessage:
+        type: string
+      output:
+        type: object
+      succeeded:
+        type: boolean
+    type: object
+  models.AuditLog:
+    properties:
+      action:
+        type: string
+      actor:
+        type: string
+      createdAt:
+        type: string
+      id:
+        type: string
+      payload:
+        type: object
+      resourceId:
+        type: string
+      resourceType:
+        type: string
+      workspaceId:
+        type: string
+    type: object
+  models.CollectionRequirement:
+    properties:
+      confirmedAt:
+        type: string
+      confirmedBy:
+        type: string
+      contentHash:
+        type: string
+      createdAt:
+        type: string
+      id:
+        type: string
+      owner:
+        type: string
+      recordingId:
+        type: string
+      requirement:
+        $ref: '#/definitions/models.CollectionRequirementSpec'
+      source:
+        $ref: '#/definitions/models.RequirementSource'
+      sourceJobId:
+        type: string
+      status:
+        $ref: '#/definitions/models.CollectionRequirementStatus'
+      updatedAt:
+        type: string
+      workspaceId:
+        type: string
+    type: object
+  models.CollectionRequirementSpec:
+    properties:
+      description:
+        type: string
+      optionalInputs:
+        items:
+          $ref: '#/definitions/models.RequirementInput'
+        type: array
+      outputFields:
+        items:
+          $ref: '#/definitions/models.RequirementOutputField'
+        type: array
+      requiredInputs:
+        items:
+          $ref: '#/definitions/models.RequirementInput'
+        type: array
+      sampleOutput:
+        additionalProperties: {}
+        type: object
+      title:
+        type: string
+    type: object
+  models.CollectionRequirementStatus:
+    enum:
+    - draft
+    - confirmed
+    type: string
+    x-enum-varnames:
+    - CollectionRequirementDraft
+    - CollectionRequirementConfirmed
+  models.DSLJob:
+    properties:
+      attemptCount:
+        type: integer
+      availableAt:
+        type: string
+      chunkCount:
+        type: integer
+      completedAt:
+        type: string
+      completedChunks:
+        description: |-
+          CompletedChunks counts analyzed recording chunks while the job runs;
+          it equals ChunkCount once the job completes.
+        type: integer
+      createdAt:
+        type: string
+      errorCode:
+        type: string
+      errorMessage:
+        type: string
+      id:
+        type: string
+      inputTokens:
+        type: integer
+      kind:
+        $ref: '#/definitions/models.DSLJobKind'
+      maxAttempts:
+        type: integer
+      model:
+        type: string
+      outputTokens:
+        type: integer
+      promptVersion:
+        type: string
+      provider:
+        type: string
+      requestHash:
+        type: string
+      resultHash:
+        type: string
+      safetyFlags:
+        items:
+          type: string
+        type: array
+      sourceAttemptReportId:
+        description: |-
+          SourceAttemptReportID is present only for the one-shot selector repair
+          derived from that immutable failed provider attempt.
+        type: string
+      startedAt:
+        type: string
+      status:
+        $ref: '#/definitions/models.DSLJobStatus'
+      updatedAt:
+        type: string
+      workflowId:
+        type: string
+      workspaceId:
+        type: string
+    type: object
+  models.DSLJobKind:
+    enum:
+    - generate
+    - repair
+    - selector_repair
+    type: string
+    x-enum-varnames:
+    - DSLJobGenerate
+    - DSLJobRepair
+    - DSLJobSelectorRepair
+  models.DSLJobStatus:
+    enum:
+    - pending
+    - running
+    - completed
+    - failed
+    type: string
+    x-enum-varnames:
+    - DSLJobPending
+    - DSLJobRunning
+    - DSLJobCompleted
+    - DSLJobFailed
+  models.DSLWorkflow:
+    properties:
+      approvedAt:
+        type: string
+      approvedRuleId:
+        type: string
+      approvedVersion:
+        type: integer
+      browserProfileId:
+        type: string
+      createdAt:
+        type: string
+      currentJobId:
+        type: string
+      errorCode:
+        type: string
+      errorMessage:
+        type: string
+      id:
+        type: string
+      lastReplaySequence:
+        type: integer
+      maxRepairs:
+        type: integer
+      owner:
+        type: string
+      provisionalHash:
+        type: string
+      provisionalRule:
+        $ref: '#/definitions/models.Rule'
+      provisionalYaml:
+        type: string
+      recordingId:
+        type: string
+      repairCount:
+        type: integer
+      requirementId:
+        type: string
+      sourceArtifactHash:
+        type: string
+      sourceAuthority:
+        type: string
+      sourceExportHash:
+        type: string
+      sourceKind:
+        type: string
+      status:
+        $ref: '#/definitions/models.DSLWorkflowStatus'
+      updatedAt:
+        type: string
+      workspaceId:
+        type: string
+    type: object
+  models.DSLWorkflowStatus:
+    enum:
+    - generating
+    - awaiting_replay
+    - replaying
+    - repairing
+    - awaiting_confirmation
+    - failed
+    - approved
+    type: string
+    x-enum-varnames:
+    - DSLWorkflowGenerating
+    - DSLWorkflowAwaitingReplay
+    - DSLWorkflowReplaying
+    - DSLWorkflowRepairing
+    - DSLWorkflowAwaitingConfirmation
+    - DSLWorkflowFailed
+    - DSLWorkflowApproved
+  models.HumanIntervention:
+    properties:
+      attemptId:
+        type: string
+      browserProfileId:
+        type: string
+      checkpoint:
+        type: object
+      checkpointId:
+        type: string
+      createdAt:
+        type: string
+      decidedAt:
+        type: string
+      decidedBy:
+        type: string
+      decisionNote:
+        type: string
+      expiresAt:
+        type: string
+      id:
+        type: string
+      prompt:
+        type: string
+      requestedAction:
+        type: string
+      ruleId:
+        type: string
+      ruleVersionNumber:
+        type: integer
+      status:
+        $ref: '#/definitions/models.HumanInterventionStatus'
+      targetOrigin:
+        type: string
+      taskId:
+        type: string
+      type:
+        type: string
+      workerId:
+        type: string
+      workspaceId:
+        type: string
+    type: object
+  models.HumanInterventionStatus:
+    enum:
+    - pending
+    - approved
+    - rejected
+    - expired
+    - cancelled
+    type: string
+    x-enum-varnames:
+    - HumanInterventionPending
+    - HumanInterventionApproved
+    - HumanInterventionRejected
+    - HumanInterventionExpired
+    - HumanInterventionCancelled
+  models.LLMAttemptOutcome:
+    enum:
+    - succeeded
+    - failed
+    type: string
+    x-enum-varnames:
+    - LLMAttemptSucceeded
+    - LLMAttemptFailed
+  models.LLMAttemptReport:
+    properties:
+      artifactBytes:
+        type: integer
+      artifactHash:
+        type: string
+      attemptNumber:
+        type: integer
+      baselineHash:
+        type: string
+      callCount:
+        type: integer
+      createdAt:
+        type: string
+      errorCode:
+        type: string
+      errorMessage:
+        type: string
+      id:
+        type: string
+      inputTokens:
+        type: integer
+      jobId:
+        type: string
+      jobType:
+        $ref: '#/definitions/models.LLMJobType'
+      model:
+        type: string
+      outcome:
+        $ref: '#/definitions/models.LLMAttemptOutcome'
+      outputTokens:
+        type: integer
+      policyFingerprint:
+        type: string
+      promptVersion:
+        type: string
+      provider:
+        type: string
+      recordingHash:
+        type: string
+      recordingId:
+        type: string
+      replayable:
+        type: boolean
+      requirementHash:
+        type: string
+      safetyFlags:
+        items:
+          type: string
+        type: array
+      selectorCatalogHash:
+        type: string
+      validationPhase:
+        type: string
+      workspaceId:
+        type: string
+    type: object
+  models.LLMDispatchLineage:
+    properties:
+      logicalAttempt:
+        type: integer
+      operationId:
+        type: string
+      operationKind:
+        type: string
+      physicalOrdinal:
+        type: integer
+      policyFingerprint:
+        type: string
+      priceRevision:
+        type: string
+      routeSlot:
+        type: string
+    type: object
+  models.LLMJob:
+    properties:
+      attemptCount:
+        type: integer
+      baseline:
+        type: object
+      completedAt:
+        type: string
+      createdAt:
+        type: string
+      id:
+        type: string
+      inputTokens:
+        type: integer
+      model:
+        type: string
+      outputTokens:
+        type: integer
+      provider:
+        type: string
+      recording:
+        type: object
+      resultError:
+        type: string
+      resultPatch:
+        type: object
+      resultRule:
+        type: object
+      ruleId:
+        type: string
+      safetyFlags:
+        type: object
+      startedAt:
+        type: string
+      status:
+        type: string
+      suggestions:
+        type: object
+      userHint:
+        type: string
+      workspaceId:
+        type: string
+    type: object
+  models.LLMJobType:
+    enum:
+    - requirement
+    - dsl
+    type: string
+    x-enum-varnames:
+    - LLMJobTypeRequirement
+    - LLMJobTypeDSL
+  models.LLMProviderCall:
+    properties:
+      artifactBytes:
+        type: integer
+      artifactHash:
+        type: string
+      attemptNumber:
+        type: integer
+      cacheHit:
+        type: boolean
+      callIndex:
+        type: integer
+      callKind:
+        $ref: '#/definitions/models.LLMProviderCallKind'
+      capturedBytes:
+        type: integer
+      chunkCount:
+        type: integer
+      chunkIndex:
+        type: integer
+      createdAt:
+        type: string
+      dispatch:
+        $ref: '#/definitions/models.LLMDispatchLineage'
+      errorCode:
+        type: string
+      finishReason:
+        type: string
+      httpStatus:
+        type: integer
+      id:
+        type: string
+      inputTokens:
+        type: integer
+      jobId:
+        type: string
+      jobType:
+        $ref: '#/definitions/models.LLMJobType'
+      model:
+        type: string
+      originalBytes:
+        type: integer
+      originalBytesExact:
+        type: boolean
+      outputTokens:
+        type: integer
+      phase:
+        type: string
+      promptVersion:
+        type: string
+      provider:
+        type: string
+      providerAttempt:
+        type: integer
+      recordingId:
+        type: string
+      redacted:
+        type: boolean
+      replayable:
+        type: boolean
+      requestHash:
+        type: string
+      responseHash:
+        type: string
+      responseId:
+        type: string
+      truncated:
+        type: boolean
+      workspaceId:
+        type: string
+    type: object
+  models.LLMProviderCallKind:
+    enum:
+    - provider_response
+    - provider_error
+    - cache_hit
+    type: string
+    x-enum-varnames:
+    - LLMProviderCallKindResponse
+    - LLMProviderCallKindError
+    - LLMProviderCallKindCacheHit
+  models.LogEntry:
+    properties:
+      createdAt:
+        type: string
+      extra:
+        type: object
+      id:
+        type: string
+      level:
+        type: string
+      message:
+        type: string
+      taskId:
+        type: string
+      workerId:
+        type: string
+      workspaceId:
+        type: string
+    type: object
+  models.Priority:
+    enum:
+    - low
+    - normal
+    - high
+    type: string
+    x-enum-varnames:
+    - PriorityLow
+    - PriorityNormal
+    - PriorityHigh
+  models.ReplayArtifact:
+    properties:
+      data:
+        type: string
+      name:
+        type: string
+      type:
+        type: string
+    type: object
+  models.ReplayAttempt:
+    properties:
+      artifacts:
+        items:
+          $ref: '#/definitions/models.ReplayArtifact'
+        type: array
+      artifactsHash:
+        type: string
+      browserProfileId:
+        type: string
+      completedAt:
+        type: string
+      diagnostics:
+        type: object
+      diagnosticsHash:
+        type: string
+      errorCode:
+        type: string
+      errorMessage:
+        type: string
+      id:
+        type: string
+      output:
+        type: object
+      outputHash:
+        type: string
+      outputValid:
+        type: boolean
+      ruleHash:
+        type: string
+      sequence:
+        type: integer
+      startedAt:
+        type: string
+      status:
+        $ref: '#/definitions/models.ReplayAttemptStatus'
+      workflowId:
+        type: string
+      workspaceId:
+        type: string
+    type: object
+  models.ReplayAttemptStatus:
+    enum:
+    - running
+    - succeeded
+    - failed
+    type: string
+    x-enum-varnames:
+    - ReplayAttemptRunning
+    - ReplayAttemptSucceeded
+    - ReplayAttemptFailed
+  models.RequirementInput:
+    properties:
+      constraints:
+        additionalProperties: {}
+        type: object
+      default: {}
+      description:
+        type: string
+      name:
+        type: string
+      secret:
+        type: boolean
+      type:
+        $ref: '#/definitions/models.RequirementValueType'
+    type: object
+  models.RequirementJob:
+    properties:
+      attemptBudget:
+        type: integer
+      attemptCount:
+        type: integer
+      availableAt:
+        type: string
+      chunkCount:
+        type: integer
+      completedAt:
+        type: string
+      completedChunks:
+        description: |-
+          CompletedChunks counts analyzed recording chunks while the job runs;
+          it equals ChunkCount once the job completes.
+        type: integer
+      createdAt:
+        type: string
+      errorCode:
+        type: string
+      errorMessage:
+        type: string
+      id:
+        type: string
+      inputTokens:
+        type: integer
+      kind:
+        $ref: '#/definitions/models.RequirementJobKind'
+      maxAttempts:
+        type: integer
+      model:
+        type: string
+      outputTokens:
+        type: integer
+      promptVersion:
+        type: string
+      provider:
+        type: string
+      recordingId:
+        type: string
+      requestHash:
+        type: string
+      requirementId:
+        type: string
+      result: {}
+      resultHash:
+        type: string
+      safetyFlags:
+        items:
+          type: string
+        type: array
+      source:
+        $ref: '#/definitions/models.RequirementSource'
+      startedAt:
+        type: string
+      status:
+        $ref: '#/definitions/models.RequirementJobStatus'
+      updatedAt:
+        type: string
+      workspaceId:
+        type: string
+    type: object
+  models.RequirementJobKind:
+    enum:
+    - candidates
+    - normalize
+    type: string
+    x-enum-varnames:
+    - RequirementJobCandidates
+    - RequirementJobNormalize
+  models.RequirementJobStatus:
+    enum:
+    - pending
+    - running
+    - completed
+    - failed
+    type: string
+    x-enum-varnames:
+    - RequirementJobPending
+    - RequirementJobRunning
+    - RequirementJobCompleted
+    - RequirementJobFailed
+  models.RequirementOutputField:
+    properties:
+      description:
+        type: string
+      name:
+        type: string
+      type:
+        $ref: '#/definitions/models.RequirementValueType'
+    type: object
+  models.RequirementSource:
+    enum:
+    - llm
+    - manual
+    type: string
+    x-enum-varnames:
+    - RequirementSourceLLM
+    - RequirementSourceManual
+  models.RequirementValueType:
+    enum:
+    - string
+    - number
+    - boolean
+    - object
+    - array
+    type: string
+    x-enum-varnames:
+    - RequirementValueString
+    - RequirementValueNumber
+    - RequirementValueBoolean
+    - RequirementValueObject
+    - RequirementValueArray
+  models.Result:
+    properties:
+      attemptId:
+        type: string
+      createdAt:
+        type: string
+      id:
+        type: string
+      idempotencyKey:
+        type: string
+      immediate:
+        type: boolean
+      kind:
+        $ref: '#/definitions/models.ResultKind'
+      payload:
+        type: object
+      payloadHash:
+        type: string
+      sequence:
+        type: integer
+      taskId:
+        type: string
+      valid:
+        type: boolean
+      validationError:
+        type: string
+      workerId:
+        type: string
+      workspaceId:
+        type: string
+    type: object
+  models.ResultKind:
+    enum:
+    - batch
+    - summary
+    type: string
+    x-enum-varnames:
+    - ResultKindBatch
+    - ResultKindSummary
+  models.ResultPage:
+    properties:
+      batches:
+        items:
+          $ref: '#/definitions/models.Result'
+        type: array
+      invalidBatches:
+        items:
+          $ref: '#/definitions/models.Result'
+        type: array
+      limit:
+        type: integer
+      offset:
+        type: integer
+      summary:
+        $ref: '#/definitions/models.Result'
+      total:
+        type: integer
+    type: object
+  models.Rule:
+    properties:
+      approvalStatus:
+        type: string
+      createdAt:
+        type: string
+      domain:
+        type: object
+      enabled:
+        type: boolean
+      entry:
+        type: string
+      hooks:
+        type: object
+      humanize:
+        type: object
+      id:
+        type: string
+      name:
+        type: string
+      output:
+        type: object
+      owner:
+        type: string
+      priority:
+        $ref: '#/definitions/models.Priority'
+      selectors:
+        type: object
+      sendPolicy:
+        type: object
+      source:
+        type: string
+      steps:
+        type: object
+      tags:
+        type: object
+      updatedAt:
+        type: string
+      urlPattern:
+        type: object
+      variables:
+        type: object
+      version:
+        type: string
+      workspaceId:
+        type: string
+    type: object
+  models.RuleApprovalStatus:
+    enum:
+    - pending
+    - approved
+    - rejected
+    type: string
+    x-enum-varnames:
+    - RuleApprovalPending
+    - RuleApprovalApproved
+    - RuleApprovalRejected
+  models.RuleVersion:
+    properties:
+      approvedAt:
+        type: string
+      approvedBy:
+        type: string
+      contentHash:
+        type: string
+      createdAt:
+        type: string
+      owner:
+        type: string
+      recordingId:
+        type: string
+      rejectedAt:
+        type: string
+      rejectedBy:
+        type: string
+      rule:
+        $ref: '#/definitions/models.Rule'
+      ruleId:
+        type: string
+      source:
+        type: string
+      status:
+        $ref: '#/definitions/models.RuleApprovalStatus'
+      version:
+        type: integer
+      versionLabel:
+        type: string
+      workspaceId:
+        type: string
+    type: object
+  models.RuleVersionContract:
+    properties:
+      browserProfileId:
+        type: string
+      createdAt:
+        type: string
+      inputSchema:
+        type: object
+      outputSchema:
+        type: object
+      ruleId:
+        type: string
+      sourceArtifactHash:
+        type: string
+      sourceAuthority:
+        type: string
+      sourceExportHash:
+        type: string
+      sourceKind:
+        type: string
+      sourceWorkflowId:
+        type: string
+      version:
+        type: integer
+      workspaceId:
+        type: string
+    type: object
+info:
+  contact: {}
+  description: Production-grade task coordination service for AegisCrawler data collection.
+  license:
+    name: GPL-3.0-or-later
+  title: AegisCrawler Page Agent Service
+  version: 0.1.0
+paths:
+  /admin/audit_logs:
+    get:
+      description: 'Returns a paginated list of audit logs with optional filters.
+        Query parameters: actor, action, resource_type, resource_id, created_after,
+        created_before, limit, offset. created_after and created_before accept RFC3339
+        timestamps.'
+      parameters:
+      - description: Filter by actor
+        in: query
+        name: actor
+        type: string
+      - description: Filter by action
+        in: query
+        name: action
+        type: string
+      - description: Filter by resource type
+        in: query
+        name: resource_type
+        type: string
+      - description: Filter by resource ID
+        in: query
+        name: resource_id
+        type: string
+      - description: Filter by created_at >= value (RFC3339)
+        in: query
+        name: created_after
+        type: string
+      - description: Filter by created_at <= value (RFC3339)
+        in: query
+        name: created_before
+        type: string
+      - description: Page size (default 100)
+        in: query
+        name: limit
+        type: integer
+      - description: Page offset (default 0)
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.ListAuditLogsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - AdminApiKey: []
+      summary: List audit logs (admin)
+      tags:
+      - admin
+  /admin/llm/budget:
+    get:
+      description: Returns global and authenticated-workspace request/daily limits,
+        settled amount, active reservations, remaining amount, and uncertain-call
+        count. There is no API to refund, release, delete, or override a denial.
+      parameters:
+      - description: UTC calendar day (YYYY-MM-DD). Defaults to today.
+        in: query
+        name: day
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.LLMBudgetResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "503":
+          description: Budget ledger unavailable
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - AdminApiKey: []
+      summary: Read LLM hard-budget state for a UTC day (admin)
+      tags:
+      - admin
+  /admin/llm/policy:
+    get:
+      description: Returns the sanitized enforced-policy contract. Credentials, prompts,
+        and provider response content are never included, and there is no API to mutate
+        the policy.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.LLMPolicyResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - AdminApiKey: []
+      summary: Read the active LLM policy (admin)
+      tags:
+      - admin
+  /admin/mcp/tokens:
+    get:
+      description: Lists workspace-scoped token metadata without plaintext tokens
+        or token hashes.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.ListMCPTokensResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - AdminApiKey: []
+      summary: List MCP bearer-token metadata
+      tags:
+      - admin
+    post:
+      consumes:
+      - application/json
+      description: Creates a revocable workspace-scoped MCP token. The plaintext token
+        is returned only once.
+      parameters:
+      - description: MCP token metadata and permissions
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/api.CreateMCPTokenRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/api.MCPTokenResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - AdminApiKey: []
+      summary: Create an MCP bearer token
+      tags:
+      - admin
+  /admin/mcp/tokens/{id}:
+    delete:
+      parameters:
+      - description: MCP token ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.SuccessResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - AdminApiKey: []
+      summary: Revoke an MCP bearer token
+      tags:
+      - admin
+  /admin/rules:
+    get:
+      description: 'Returns a paginated list of rules with optional filters. Query
+        parameters: enabled, approval_status, domain, owner, limit, offset.'
+      parameters:
+      - description: Filter by enabled state
+        in: query
+        name: enabled
+        type: boolean
+      - description: Filter by approval_status
+        in: query
+        name: approval_status
+        type: string
+      - description: Filter by domain raw JSON
+        in: query
+        name: domain
+        type: string
+      - description: Filter by owner
+        in: query
+        name: owner
+        type: string
+      - description: Page size (default 100)
+        in: query
+        name: limit
+        type: integer
+      - description: Page offset (default 0)
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.ListRulesResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - AdminApiKey: []
+      summary: List rules (admin)
+      tags:
+      - admin
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Rule
+        in: body
+        name: rule
+        required: true
+        schema:
+          $ref: '#/definitions/models.Rule'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.SuccessResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - AdminApiKey: []
+      summary: Create or update a rule (admin)
+      tags:
+      - admin
+  /admin/rules/{id}:
+    delete:
+      description: Deletes a rule and all of its tasks, results, logs, snapshots,
+        heartbeats, status updates, and checkpoints.
+      parameters:
+      - description: Rule ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.SuccessResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - AdminApiKey: []
+      summary: Delete a rule (admin)
+      tags:
+      - admin
+    get:
+      description: Returns the full rule configuration for visualization and editing.
+      parameters:
+      - description: Rule ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.RuleResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Get a rule by ID for admin UI
+      tags:
+      - admin
+    patch:
+      consumes:
+      - application/json
+      description: Partially updates a rule. Only fields sent in the request body
+        are modified; omitted fields remain unchanged. Uses fetch-and-merge through
+        the existing upsert to preserve fields and foreign-key stability.
+      parameters:
+      - description: Rule ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Rule fields to update
+        in: body
+        name: rule
+        required: true
+        schema:
+          $ref: '#/definitions/api.UpdateRuleRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.RuleResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - AdminApiKey: []
+      summary: Update a rule (admin)
+      tags:
+      - admin
+  /admin/rules/{id}/approve:
+    post:
+      consumes:
+      - application/json
+      description: Sets a rule's approval_status to approved so it becomes eligible
+        for task claiming.
+      parameters:
+      - description: Rule ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.SuccessResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - AdminApiKey: []
+      summary: Approve a rule (admin)
+      tags:
+      - admin
+  /admin/rules/{id}/enhancement:
+    get:
+      parameters:
+      - description: Rule ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.RuleEnhancementResponse'
+      security:
+      - AdminApiKey: []
+      summary: Get the latest enhancement for a rule
+      tags:
+      - admin
+  /admin/rules/{id}/enhancement/accept:
+    post:
+      parameters:
+      - description: Rule ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.RuleResponse'
+      security:
+      - AdminApiKey: []
+      summary: Accept an LLM enhancement
+      tags:
+      - admin
+  /admin/rules/{id}/enhancement/reject:
+    post:
+      parameters:
+      - description: Rule ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.SuccessResponse'
+      security:
+      - AdminApiKey: []
+      summary: Reject an LLM enhancement
+      tags:
+      - admin
+  /admin/rules/{id}/reject:
+    post:
+      consumes:
+      - application/json
+      description: Sets a rule's approval_status to rejected so it is ineligible for
+        task claiming.
+      parameters:
+      - description: Rule ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.SuccessResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - AdminApiKey: []
+      summary: Reject a rule (admin)
+      tags:
+      - admin
+  /admin/rules/{id}/versions:
+    get:
+      description: Returns version metadata plus contracts keyed by rule ID and numeric
+        version.
+      parameters:
+      - description: Rule ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.ListRuleVersionsResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - AdminApiKey: []
+      summary: List immutable rule versions and execution contracts
+      tags:
+      - admin
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Rule ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Immutable rule snapshot
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/api.CreateRuleVersionRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/api.RuleVersionResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - AdminApiKey: []
+      summary: Create an immutable rule version
+      tags:
+      - admin
+  /admin/rules/{id}/versions/{version}:
+    get:
+      parameters:
+      - description: Rule ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Numeric version
+        in: path
+        name: version
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.RuleVersionResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - AdminApiKey: []
+      summary: Get an immutable rule version and execution contract
+      tags:
+      - admin
+  /admin/rules/enhance:
+    post:
+      consumes:
+      - application/json
+      description: Takes a recording and baseline rule, enqueues an asynchronous LLM
+        enhancement job, and returns a job id for polling.
+      parameters:
+      - description: Recording and baseline
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/api.EnhanceRuleRequest'
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            $ref: '#/definitions/api.EnhanceRuleResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - AdminApiKey: []
+      summary: Enhance a rule with LLM (admin)
+      tags:
+      - admin
+  /admin/rules/enhancements/jobs/{id}:
+    get:
+      parameters:
+      - description: Job ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.LLMJob'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - AdminApiKey: []
+      summary: Get the status of an LLM enhancement job
+      tags:
+      - admin
+  /admin/rules/generate-from-intent:
+    post:
+      consumes:
+      - application/json
+      description: Takes a recording, baseline rule, and intent hint, then returns
+        an enhanced rule and its YAML representation.
+      parameters:
+      - description: Recording, baseline rule, and intent
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/api.GenerateFromIntentRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.GenerateFromIntentResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "429":
+          description: LLM hard budget exceeded
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "503":
+          description: LLM provider or budget ledger unavailable
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - AdminApiKey: []
+      summary: Generate a rule from intent (admin)
+      tags:
+      - admin
+  /admin/rules/predict-intent:
+    post:
+      consumes:
+      - application/json
+      description: Takes a PageAgent recording and returns candidate intents generated
+        by LLM.
+      parameters:
+      - description: Recording
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/api.PredictIntentRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.PredictIntentResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "429":
+          description: LLM hard budget exceeded
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "503":
+          description: LLM provider or budget ledger unavailable
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - AdminApiKey: []
+      summary: Predict user intent from recording
+      tags:
+      - admin
+  /admin/schedules:
+    get:
+      parameters:
+      - description: Filter by rule ID
+        in: query
+        name: rule_id
+        type: string
+      - description: Filter by type
+        in: query
+        name: type
+        type: string
+      - description: Filter by enabled state
+        in: query
+        name: enabled
+        type: boolean
+      - description: Page size (default 100)
+        in: query
+        name: limit
+        type: integer
+      - description: Page offset (default 0)
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.ListSchedulesResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - AdminApiKey: []
+      summary: List schedules (admin)
+      tags:
+      - admin
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Schedule
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/api.CreateScheduleRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.ScheduleResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - AdminApiKey: []
+      summary: Create a schedule (admin)
+      tags:
+      - admin
+  /admin/schedules/{id}:
+    delete:
+      parameters:
+      - description: Schedule ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.SuccessResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - AdminApiKey: []
+      summary: Delete a schedule (admin)
+      tags:
+      - admin
+    get:
+      parameters:
+      - description: Schedule ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.ScheduleResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - AdminApiKey: []
+      summary: Get a schedule by ID (admin)
+      tags:
+      - admin
+    patch:
+      consumes:
+      - application/json
+      parameters:
+      - description: Schedule ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Schedule fields to update
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/api.UpdateScheduleRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.ScheduleResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - AdminApiKey: []
+      summary: Update a schedule (admin)
+      tags:
+      - admin
+  /admin/schedules/{id}/trigger:
+    post:
+      parameters:
+      - description: Schedule ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.TriggerScheduleResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - AdminApiKey: []
+      summary: Manually trigger a schedule (admin)
+      tags:
+      - admin
+  /admin/schedules/preview:
+    get:
+      description: Computes the next N run times for a cron expression starting from
+        an optional reference time.
+      parameters:
+      - description: Cron expression
+        in: query
+        name: expression
+        required: true
+        type: string
+      - description: Reference time in RFC3339
+        in: query
+        name: after
+        type: string
+      - description: IANA timezone (default UTC)
+        in: query
+        name: timezone
+        type: string
+      - description: Number of runs to compute (default 5, max 20)
+        in: query
+        name: count
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.PreviewScheduleResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - AdminApiKey: []
+      summary: Preview upcoming cron run times
+      tags:
+      - admin
+  /admin/tasks:
+    get:
+      description: 'Returns a paginated list of tasks with optional filters. Query
+        parameters: status, rule_id, worker_id, priority, created_after, created_before,
+        limit, offset. created_after and created_before accept RFC3339 timestamps.'
+      parameters:
+      - description: Filter by status
+        in: query
+        name: status
+        type: string
+      - description: Filter by rule ID
+        in: query
+        name: rule_id
+        type: string
+      - description: Filter by worker ID
+        in: query
+        name: worker_id
+        type: string
+      - description: Filter by priority
+        in: query
+        name: priority
+        type: string
+      - description: Filter by created_at >= value (RFC3339)
+        in: query
+        name: created_after
+        type: string
+      - description: Filter by created_at <= value (RFC3339)
+        in: query
+        name: created_before
+        type: string
+      - description: Page size (default 100)
+        in: query
+        name: limit
+        type: integer
+      - description: Page offset (default 0)
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.ListTasksResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - AdminApiKey: []
+      summary: List tasks (admin)
+      tags:
+      - admin
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Task
+        in: body
+        name: task
+        required: true
+        schema:
+          $ref: '#/definitions/api.CreateTaskRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.SuccessResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - AdminApiKey: []
+      summary: Create a task (admin)
+      tags:
+      - admin
+  /admin/tasks/{id}/cancel:
+    post:
+      description: Cancels a pending or leased task, or requests cancellation of a
+        running task by setting cancel_requested. Returns 409 if the task is already
+        terminal.
+      parameters:
+      - description: Task ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.SuccessResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - AdminApiKey: []
+      summary: Cancel a task (admin)
+      tags:
+      - admin
+  /admin/tasks/{id}/human-interventions:
+    get:
+      parameters:
+      - description: Task ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.ListHumanInterventionsResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - AdminApiKey: []
+      summary: List operator decisions for a task
+      tags:
+      - admin
+  /admin/tasks/{id}/human-interventions/{interventionId}/decision:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Task ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Human intervention ID
+        in: path
+        name: interventionId
+        required: true
+        type: string
+      - description: Decision
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/api.DecideHumanInterventionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.HumanInterventionResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - AdminApiKey: []
+      summary: Approve or reject a checkpoint-bound resume
+      tags:
+      - admin
+  /admin/tasks/{id}/results:
+    get:
+      parameters:
+      - description: Task ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Result'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "409":
+          description: Source lineage requires the versioned results endpoint
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - AdminApiKey: []
+      summary: Get aggregated results for a task (admin)
+      tags:
+      - admin
+  /admin/tasks/{id}/retry:
+    post:
+      description: Transitions a failed, dead_letter, or cancelled task back to pending
+        and resets retry bookkeeping.
+      parameters:
+      - description: Task ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.SuccessResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - AdminApiKey: []
+      summary: Retry a task (admin)
+      tags:
+      - admin
+  /api/v1/dsl-jobs/{id}:
+    get:
+      parameters:
+      - description: DSL job ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.DSLJobResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - AdminApiKey: []
+      summary: Get a durable DSL generation or repair job
+      tags:
+      - dsl-workflows
+  /api/v1/dsl-jobs/{id}/provider-attempts:
+    get:
+      description: Returns workspace-scoped immutable attempt metadata without provider
+        response content.
+      parameters:
+      - description: DSL job ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.DSLProviderAttemptListResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - AdminApiKey: []
+      summary: List retained provider attempts for a DSL job
+      tags:
+      - dsl-workflows
+  /api/v1/dsl-jobs/{id}/provider-attempts/{attempt}:
+    get:
+      description: Returns the bounded decrypted provider IR, resolved rule, validation
+        report, and ordered call metadata.
+      parameters:
+      - description: DSL job ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Attempt number
+        in: path
+        name: attempt
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.DSLProviderAttemptResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - AdminApiKey: []
+      summary: Get a retained provider attempt for a DSL job
+      tags:
+      - dsl-workflows
+  /api/v1/dsl-jobs/{id}/provider-attempts/{attempt}/calls/{callId}/content:
+    get:
+      description: Returns one bounded, defensively redacted provider response artifact.
+      parameters:
+      - description: DSL job ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Attempt number
+        in: path
+        name: attempt
+        required: true
+        type: integer
+      - description: Provider call ID
+        in: path
+        name: callId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.DSLProviderCallContentResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - AdminApiKey: []
+      summary: Get one retained provider response for a DSL job attempt
+      tags:
+      - dsl-workflows
+  /api/v1/dsl-replays/{id}:
+    get:
+      parameters:
+      - description: Replay attempt ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.DSLReplayResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - AdminApiKey: []
+      summary: Get a sanitized DSL replay attempt
+      tags:
+      - dsl-workflows
+  /api/v1/dsl-workflows/{id}:
+    get:
+      description: Returns generation, repair, replay, and approval state. The provisional
+        rule is returned only within the authenticated workspace.
+      parameters:
+      - description: DSL workflow ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.DSLWorkflowResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - AdminApiKey: []
+      summary: Get a durable DSL workflow
+      tags:
+      - dsl-workflows
+  /api/v1/dsl-workflows/{id}/confirm:
+    post:
+      description: Approval is accepted only for the current provisional hash after
+        a complete successful schema-valid replay.
+      parameters:
+      - description: DSL workflow ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.RuleVersionResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - AdminApiKey: []
+      summary: Confirm a successful replay and approve an immutable rule version
+      tags:
+      - dsl-workflows
+  /api/v1/dsl-workflows/{id}/provisional:
+    put:
+      consumes:
+      - application/json
+      description: Accepts only failed or awaiting-replay workflows. The complete
+        corrected rule must preserve recording identity and pass schema, output-contract,
+        replay-safety, and security validation. A successful correction must still
+        complete replay and explicit confirmation before approval.
+      parameters:
+      - description: DSL workflow ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Complete corrected provisional rule
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/api.CorrectDSLWorkflowRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.DSLWorkflowResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - AdminApiKey: []
+      summary: Replace a provisional DSL with a human-authored correction
+      tags:
+      - dsl-workflows
+  /api/v1/dsl-workflows/{id}/replays:
+    post:
+      description: Creates a replay attempt bound to the current provisional rule
+        hash and selected browser profile.
+      parameters:
+      - description: DSL workflow ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/api.DSLReplayResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - AdminApiKey: []
+      summary: Start a full fresh-tab replay
+      tags:
+      - dsl-workflows
+  /api/v1/dsl-workflows/{id}/replays/{replayId}/complete:
+    post:
+      consumes:
+      - application/json
+      description: Stores bounded sanitized diagnostics and validates collected output.
+        Failures schedule at most three durable repair jobs.
+      parameters:
+      - description: DSL workflow ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Replay attempt ID
+        in: path
+        name: replayId
+        required: true
+        type: string
+      - description: Sanitized replay outcome
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dsl.ReplayCompletionInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.DSLReplayResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - AdminApiKey: []
+      summary: Submit a complete replay outcome
+      tags:
+      - dsl-workflows
+  /api/v1/recordings/{id}/requirement-jobs:
+    post:
+      description: Starts a durable asynchronous job that generates exactly three
+        structured requirement candidates from a persisted recording.
+      parameters:
+      - description: Recording ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            $ref: '#/definitions/api.RequirementJobResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - AdminApiKey: []
+      summary: Generate collection requirement candidates
+      tags:
+      - requirements
+  /api/v1/recordings/{id}/requirement-jobs/normalize:
+    post:
+      consumes:
+      - application/json
+      description: Starts a durable asynchronous job that normalizes a selected, edited,
+        custom-text, or manually structured requirement.
+      parameters:
+      - description: Recording ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Requirement to normalize
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/api.NormalizeRequirementRequest'
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            $ref: '#/definitions/api.RequirementJobResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - AdminApiKey: []
+      summary: Normalize a collection requirement
+      tags:
+      - requirements
+  /api/v1/requirement-jobs/{id}:
+    get:
+      description: Returns durable status, provenance, safety findings, and the completed
+        structured result when available.
+      parameters:
+      - description: Requirement job ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.RequirementJobResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - AdminApiKey: []
+      summary: Get a collection requirement job
+      tags:
+      - requirements
+  /api/v1/requirement-jobs/{id}/provider-attempts:
+    get:
+      description: Returns workspace-scoped immutable attempt metadata without provider
+        response content.
+      parameters:
+      - description: Requirement job ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.RequirementProviderAttemptListResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - AdminApiKey: []
+      summary: List retained provider attempts for a requirement job
+      tags:
+      - requirements
+  /api/v1/requirement-jobs/{id}/provider-attempts/{attempt}:
+    get:
+      description: Returns the bounded decrypted validation artifact and ordered provider-call
+        metadata. Raw provider call content uses a separate endpoint.
+      parameters:
+      - description: Requirement job ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Attempt number
+        in: path
+        name: attempt
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.RequirementProviderAttemptResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - AdminApiKey: []
+      summary: Get a retained provider attempt for a requirement job
+      tags:
+      - requirements
+  /api/v1/requirement-jobs/{id}/provider-attempts/{attempt}/calls/{callId}/content:
+    get:
+      description: Returns one bounded, defensively redacted provider response artifact.
+      parameters:
+      - description: Requirement job ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Attempt number
+        in: path
+        name: attempt
+        required: true
+        type: integer
+      - description: Provider call ID
+        in: path
+        name: callId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.RequirementProviderCallContentResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - AdminApiKey: []
+      summary: Get one retained provider response for a requirement job attempt
+      tags:
+      - requirements
+  /api/v1/requirement-jobs/{id}/retry:
+    post:
+      description: Requeues a failed durable job when its bounded attempt budget has
+        not been exhausted.
+      parameters:
+      - description: Requirement job ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            $ref: '#/definitions/api.RequirementJobResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - AdminApiKey: []
+      summary: Retry a failed collection requirement job
+      tags:
+      - requirements
+  /api/v1/requirements/{id}:
+    get:
+      description: Returns the workspace-scoped structured requirement and confirmation
+        status used by the DSL generation workflow.
+      parameters:
+      - description: Collection requirement ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.CollectionRequirementResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - AdminApiKey: []
+      summary: Get a normalized collection requirement
+      tags:
+      - requirements
+  /api/v1/requirements/{id}/confirm:
+    post:
+      description: Immutably confirms the reviewed structured requirement before any
+        provisional DSL can be generated.
+      parameters:
+      - description: Collection requirement ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.CollectionRequirementResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - AdminApiKey: []
+      summary: Confirm a normalized collection requirement
+      tags:
+      - requirements
+  /api/v1/requirements/{id}/dsl-workflows:
+    post:
+      consumes:
+      - application/json
+      description: Starts a durable asynchronous generation job. The named browser
+        profile identifies the current Chrome profile used for fresh-tab replay; credential
+        contents are never submitted.
+      parameters:
+      - description: Confirmed requirement ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Recording-derived baseline rule and browser profile reference
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/api.CreateDSLWorkflowRequest'
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            $ref: '#/definitions/api.DSLWorkflowResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - AdminApiKey: []
+      summary: Generate a provisional DSL from a confirmed requirement
+      tags:
+      - dsl-workflows
+  /api/v1/requirements/{id}/dsl-workflows/adopt-attempt-export:
+    post:
+      consumes:
+      - application/json
+      description: Revalidates a bounded provider-response-free attempt export against
+        the current confirmed requirement and restored recording. The resulting non-authoritative
+        workflow has no DSL job or provider call and still requires replay and explicit
+        approval.
+      parameters:
+      - description: Confirmed requirement ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Reviewed attempt export and browser profile
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/api.AdoptDSLAttemptExportRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/api.DSLWorkflowResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - AdminApiKey: []
+      summary: Adopt an admin-reviewed exported DSL attempt for replay
+      tags:
+      - dsl-workflows
+  /api/v1/tasks/{id}/results:
+    get:
+      description: Returns paginated schema-valid batches, the immutable output schema,
+        an optional final summary, and optional invalid diagnostics.
+      parameters:
+      - description: Task ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Page size (1-500, default 100)
+        in: query
+        name: limit
+        type: integer
+      - description: Page offset (default 0)
+        in: query
+        name: offset
+        type: integer
+      - description: Include invalid batch diagnostics
+        in: query
+        name: include_invalid
+        type: boolean
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.TaskResultsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - AdminApiKey: []
+      summary: Get versioned task result batches
+      tags:
+      - admin
+  /health:
+    get:
+      description: Default liveness check returns a lightweight OK. Use ?ready=1 to
+        verify the database is reachable.
+      parameters:
+      - default: false
+        description: Run readiness check including database connectivity
+        in: query
+        name: ready
+        type: boolean
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "503":
+          description: Service Unavailable
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Health check
+      tags:
+      - system
+  /heartbeat:
+    post:
+      consumes:
+      - application/json
+      description: Renews the task lease and stores worker liveness data. Returns
+        a cancel signal when the task has been requested to cancel.
+      parameters:
+      - description: Heartbeat
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/api.HeartbeatRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.HeartbeatResponse'
+      summary: Submit a heartbeat
+      tags:
+      - tasks
+  /logs:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Log entry
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/api.LogRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.SuccessResponse'
+      summary: Submit a log entry
+      tags:
+      - logs
+  /results:
+    post:
+      consumes:
+      - application/json
+      description: Workers send extracted data or control messages here.
+      parameters:
+      - description: Result payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/api.ResultRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.ResultSubmissionResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Submit a result payload
+      tags:
+      - results
+  /rules/{id}:
+    get:
+      description: Returns the full rule configuration for a worker to execute.
+      parameters:
+      - description: Rule ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.RuleResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Get a rule by ID
+      tags:
+      - rules
+  /snapshots:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Snapshot
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/api.SnapshotRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.SuccessResponse'
+      summary: Submit a snapshot
+      tags:
+      - snapshots
+  /status:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Status update
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/api.StatusRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.SuccessResponse'
+      summary: Update task status
+      tags:
+      - tasks
+  /tasks/{id}:
+    get:
+      parameters:
+      - description: Task ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.TaskResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Get a task by ID
+      tags:
+      - tasks
+  /tasks/{id}/checkpoints:
+    post:
+      consumes:
+      - application/json
+      description: Workers save recoverable state (URL, variables, extracted data)
+        at critical steps.
+      parameters:
+      - description: Checkpoint
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/api.CheckpointRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.SuccessResponse'
+      summary: Submit a checkpoint
+      tags:
+      - tasks
+  /tasks/{id}/checkpoints/latest:
+    get:
+      parameters:
+      - description: Task ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.CheckpointResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Get the latest checkpoint for a task
+      tags:
+      - tasks
+  /tasks/{id}/human-interventions:
+    post:
+      consumes:
+      - application/json
+      description: Atomically stores a sanitized checkpoint and moves the same task
+        and attempt to waiting_for_human.
+      parameters:
+      - description: Task ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Human intervention request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/api.CreateHumanInterventionRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/api.WorkerHumanInterventionResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Pause an attempt for an operator decision
+      tags:
+      - tasks
+  /tasks/{id}/human-interventions/{interventionId}:
+    get:
+      parameters:
+      - description: Task ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Human intervention ID
+        in: path
+        name: interventionId
+        required: true
+        type: string
+      - description: Worker ID
+        in: query
+        name: workerId
+        required: true
+        type: string
+      - description: Attempt ID
+        in: query
+        name: attemptId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.WorkerHumanInterventionResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Poll an operator decision
+      tags:
+      - tasks
+  /tasks/{id}/logs:
+    get:
+      parameters:
+      - description: Task ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.LogEntry'
+            type: array
+      summary: Get log entries for a task
+      tags:
+      - logs
+  /tasks/{id}/results:
+    get:
+      parameters:
+      - description: Task ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Result'
+            type: array
+        "409":
+          description: Source lineage requires the versioned results endpoint
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Get aggregated results for a task
+      tags:
+      - results
+  /tasks/claim:
+    post:
+      consumes:
+      - application/json
+      description: Workers call this endpoint to lease a task. Returns task parameters
+        encoded in the response.
+      parameters:
+      - description: Worker identification
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/api.ClaimTaskRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.ClaimTaskResponse'
+        "204":
+          description: No task available
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "429":
+          description: Too many requests
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Claim a pending task
+      tags:
+      - tasks
+securityDefinitions:
+  AdminApiKey:
+    description: Provide the admin API key as `Bearer <token>`. Admin endpoints require
+      this header when ADMIN_API_KEY is configured.
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

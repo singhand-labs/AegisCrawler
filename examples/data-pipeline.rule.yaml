@@ -1,0 +1,135 @@
+id: data-pipeline-demo
+version: 1.0.0
+name: 数据采集 → 清洗 → 校验 → 回流
+domain: data-demo.example.com
+enabled: true
+output:
+  type: object
+  required: [site, items, total]
+  properties:
+    site: { type: string }
+    total: { type: number }
+    items:
+      type: array
+      items:
+        type: object
+        required: [id, title, price]
+        properties:
+          id: { type: string }
+          title: { type: string }
+          price: { type: number, minimum: 0 }
+          category: { type: string }
+          url: { type: string, format: uri }
+sendPolicy:
+  batchSize: 50
+  flushInterval: 30000
+  sendOnFailure: true
+selectors:
+  listContainer: { selector: ".product-list" }
+  item: { selector: ".product-card" }
+  nextBtn: { selector: ".pagination .next" }
+steps:
+  - action: navigate
+    url: "https://data-demo.example.com/products"
+
+  - action: waitFor
+    target: { $ref: "selectors.listContainer" }
+
+  - action: extract
+    name: rawProducts
+    target: { $ref: "selectors.item" }
+    multiple: true
+    onEmpty: fail
+    fields:
+      id:
+        type: attr
+        selector: ".sku"
+        attr: data-id
+        required: true
+      title:
+        type: text
+        selector: ".title"
+        trim: true
+        required: true
+      priceText:
+        type: text
+        selector: ".price"
+        regex: '\\d+\\.?\\d*'
+        default: "0"
+      category:
+        type: text
+        selector: ".category"
+        default: "未分类"
+      url:
+        type: attr
+        selector: "a"
+        attr: href
+        resolve: true
+      inStock:
+        type: exists
+        selector: ".in-stock"
+    validate:
+      type: array
+      minItems: 1
+
+  - action: transform
+    from: rawProducts
+    name: normalizedProducts
+    operations:
+      - field: "*.priceText"
+        type: number
+      - field: "*"
+        type: map
+        params:
+          rename:
+            priceText: price
+
+  - action: filter
+    from: normalizedProducts
+    name: inStockProducts
+    criteria:
+      field: inStock
+      op: eq
+      value: true
+
+  - action: deduplicate
+    from: inStockProducts
+    name: uniqueProducts
+    keys: [id]
+    keep: first
+
+  - action: validateData
+    from: uniqueProducts
+    schema:
+      type: array
+      items:
+        type: object
+        required: [id, title, price]
+        properties:
+          id: { type: string }
+          title: { type: string, minLength: 1 }
+          price: { type: number, minimum: 0 }
+    onInvalid: sendPartial
+
+  - action: if
+    condition:
+      type: jsTruthy
+      script: "return {{uniqueProducts.length}} === 0;"
+    then:
+      - action: saveSnapshot
+        name: empty-list-snapshot
+        type: html
+      - action: sendLog
+        level: error
+        message: "未提取到有效商品数据"
+      - action: exit
+        status: failure
+
+  - action: sendResult
+    payload:
+      site: "data-demo.example.com"
+      total: "{{uniqueProducts.length}}"
+      items: "{{uniqueProducts}}"
+
+  - action: updateStatus
+    status: done

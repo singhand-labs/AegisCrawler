@@ -1,0 +1,96 @@
+version: 2
+updates:
+  # npm（根目录）
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Shanghai
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - npm
+    commit-message:
+      prefix: "build(deps)"
+      include: scope
+    groups:
+      typescript:
+        patterns:
+          - "typescript"
+          - "ts-node"
+          - "@types/*"
+      test:
+        patterns:
+          - "vitest"
+          - "@vitest/*"
+          - "@playwright/*"
+          - "@testing-library/*"
+          - "jsdom"
+          - "fake-indexeddb"
+
+  # npm（admin-ui）
+  - package-ecosystem: npm
+    directory: "/admin-ui"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Shanghai
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - npm
+      - admin-ui
+    commit-message:
+      prefix: "build(deps)"
+      include: scope
+
+  # Go modules
+  - package-ecosystem: gomod
+    directory: "/server"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Shanghai
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - go
+    commit-message:
+      prefix: "build(deps)"
+      include: scope
+
+  # GitHub Actions
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Shanghai
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - ci
+    commit-message:
+      prefix: "ci(deps)"
+      include: scope
+
+  # Docker
+  - package-ecosystem: docker
+    directory: "/server"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Shanghai
+    open-pull-requests-limit: 3
+    labels:
+      - dependencies
+      - docker
+    commit-message:
+      prefix: "build(deps)"
+      include: scope

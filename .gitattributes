@@ -1,0 +1,3 @@
+server/internal/api/testdata/adopted-real-executor-replay.json text eol=lf
+src/rule-engine/schemas/action.schema.json text eol=lf
+server/internal/rule/action.schema.json.gz binary

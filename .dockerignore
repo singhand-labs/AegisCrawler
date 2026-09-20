@@ -1,0 +1,17 @@
+.git
+.github
+.npmcache
+.env
+.env.*
+**/node_modules
+**/dist
+**/*.key
+**/*.pem
+backups
+coverage
+data
+server/*.db
+server/*.db-*
+server/*.exe
+server/web/admin/*
+*.log

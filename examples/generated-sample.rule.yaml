@@ -1,0 +1,44 @@
+id: recorded-1783333085375
+version: 1.0.0
+name: 录制-商品搜索
+domain: mall.example.com
+enabled: true
+entry: https://mall.example.com/search?q={{keyword}}
+variables:
+  keyword: 手机
+selectors:
+  el1:
+    selector: '#search-input'
+  el2:
+    selector: .search-btn
+  el3:
+    selector: .product-title
+humanize:
+  preDelay:
+    - 100
+    - 300
+  postDelay:
+    - 100
+    - 300
+steps:
+  - action: navigate
+    url: https://mall.example.com/search?q={{keyword}}
+    waitUntil: domcontentloaded
+  - action: type
+    target:
+      $ref: el1
+    value: '{{keyword}}'
+  - action: click
+    target:
+      $ref: el2
+  - action: scrollToBottom
+    stepBy: true
+  - action: extractText
+    name: title
+    target:
+      $ref: el3
+hooks:
+  onError:
+    - action: saveSnapshot
+      name: errorSnapshot
+    - action: flushResults

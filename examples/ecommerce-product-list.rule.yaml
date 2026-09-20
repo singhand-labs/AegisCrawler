@@ -1,0 +1,119 @@
+id: ecommerce-product-list
+version: 1.0.0
+name: 电商商品列表采集
+domain: example-mall.com
+enabled: true
+priority: 10
+entry: "https://example-mall.com/search?q={{keyword}}"
+variables:
+  keyword: "手机"
+  maxPages: 3
+selectors:
+  searchInput: { selector: "#search-input", timeout: 5000 }
+  searchBtn: { selector: "#search-btn" }
+  productItem: { selector: ".product-list .item", timeout: 10000 }
+  nextPageBtn: { selector: ".pagination .next" }
+  cookieBanner: { selector: ".cookie-banner" }
+  cookieAccept: { selector: ".cookie-accept" }
+humanize:
+  preDelay: [200, 500]
+  postDelay: [300, 700]
+  moveMouse: true
+  mousePath: bezier
+  randomOffset: 2
+screenshotOnError: true
+steps:
+  - id: accept-cookie-if-needed
+    action: if
+    condition:
+      type: elementExists
+      target: { selector: ".cookie-banner" }
+    then:
+      - action: click
+        target: { $ref: "selectors.cookieAccept" }
+
+  - id: type-search-keyword
+    action: type
+    target: { $ref: "selectors.searchInput" }
+    value: "{{keyword}}"
+    humanize:
+      typingDelay: [40, 100]
+      typingMistakeRate: 0.01
+
+  - id: submit-search
+    action: pressKey
+    keys: ["Enter"]
+
+  - id: wait-for-results
+    action: waitFor
+    target: { $ref: "selectors.productItem" }
+
+  - id: scroll-and-extract-pages
+    action: loop
+    type: fixedCount
+    count: "{{maxPages}}"
+    as: pageIndex
+    maxIterations: 10
+    steps:
+      - id: scroll-page
+        action: scrollToBottom
+        stepBy: true
+        humanize:
+          scrollSpeed: [400, 800]
+          scrollPause: [300, 600]
+
+      - id: extract-products
+        action: extract
+        name: products
+        target: { $ref: "selectors.productItem" }
+        multiple: true
+        fields:
+          title:
+            type: text
+            selector: ".title"
+            trim: true
+          price:
+            type: number
+            selector: ".price"
+            regex: '\\d+\\.?\\d*'
+          sales:
+            type: number
+            selector: ".sales"
+            regex: '\\d+'
+            default: 0
+          link:
+            type: attr
+            selector: "a"
+            attr: href
+            resolve: true
+          image:
+            type: attr
+            selector: "img"
+            attr: src
+            resolve: true
+
+      - id: send-page-result
+        action: sendResult
+        immediate: true
+        payload:
+          page: "{{pageIndex}}"
+          url: "{{page.url}}"
+          products: "{{extracted.products}}"
+
+      - id: click-next-if-exists
+        action: if
+        condition:
+          type: elementExists
+          target: { $ref: "selectors.nextPageBtn" }
+        then:
+          - action: click
+            target: { $ref: "selectors.nextPageBtn" }
+            humanize:
+              preDelay: [500, 1000]
+          - action: waitForTimeout
+            ms: [1500, 2500]
+
+  - id: finish
+    action: updateStatus
+    status: done
+    message: "商品列表采集完成"

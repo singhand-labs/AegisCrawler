@@ -1,0 +1,88 @@
+id: flow-control-browser-ops
+version: 1.0.0
+name: 流程控制与浏览器级操作
+domain: multi-tab-demo.example.com
+enabled: true
+steps:
+  - action: setViewport
+    width: 1920
+    height: 1080
+    deviceScaleFactor: 1
+
+  - action: setUserAgent
+    userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+
+  - action: navigate
+    url: "https://multi-tab-demo.example.com/list"
+
+  - id: extract-links
+    action: extract
+    name: detailLinks
+    target: { selector: ".item a", multiple: true }
+    fields:
+      url:
+        type: attr
+        attr: href
+        resolve: true
+
+  - id: process-each-link
+    action: loop
+    type: forEach
+    items: "{{extracted.detailLinks}}"
+    as: item
+    maxIterations: 5
+    steps:
+      - action: openTab
+        url: "{{item.url}}"
+        active: false
+
+      - action: waitForTimeout
+        ms: [1000, 2000]
+
+      - action: switchTab
+        to: last
+
+      - action: waitFor
+        target: { selector: ".detail-title" }
+
+      - action: extract
+        name: detail
+        target: { selector: ".detail-panel" }
+        fields:
+          title: { type: text, selector: ".detail-title" }
+          content: { type: text, selector: ".detail-content" }
+          price: { type: number, selector: ".detail-price", regex: '\\d+' }
+
+      - action: sendResult
+        immediate: true
+        payload:
+          url: "{{item.url}}"
+          detail: "{{extracted.detail}}"
+
+      - action: closeTab
+        tabId: current
+
+      - action: switchTab
+        to: 0
+
+  - id: conditional-report
+    action: if
+    condition:
+      type: jsTruthy
+      script: "return {{extracted.detailLinks.length}} > 0;"
+    then:
+      - action: sendLog
+        level: info
+        message: "成功处理 {{extracted.detailLinks.length}} 个详情页"
+    else:
+      - action: sendLog
+        level: warn
+        message: "未找到任何详情链接"
+      - action: updateStatus
+        status: failed
+        message: "无数据"
+      - action: exit
+        status: failure
+
+  - action: updateStatus
+    status: done

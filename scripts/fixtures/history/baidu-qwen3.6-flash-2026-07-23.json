@@ -1,0 +1,130 @@
+{
+  "schema": "aegiscrawler.live-dsl-history.v1",
+  "scenario": "baidu-search",
+  "providerAdapter": "openai",
+  "model": "qwen3.6-flash",
+  "promptVersion": "dsl-workflow-v22",
+  "capturedAt": "2026-07-23T03:36:56.64028Z",
+  "artifactSha256": "eab0b8ca71337283c90b133a1d25cce1aaf6179e25bb8b8ac9abd0d1db2a0352",
+  "provisionalHash": "4f67adfa329c42e23afe10e2b7db396b59d028a2384c1b55222e5101fc5a6dab",
+  "observedReplayFailure": "summary selector .c-row emitted an empty string",
+  "rule": {
+    "id": "ext-1784777186792",
+    "workspaceId": "",
+    "version": "1.0.0",
+    "name": "录制-百度一下，你就知道",
+    "domain": "www.baidu.com",
+    "urlPattern": {},
+    "enabled": true,
+    "priority": "",
+    "entry": "https://www.baidu.com/",
+    "variables": {
+      "keyword": ""
+    },
+    "selectors": {
+      "el1": {
+        "role": "textbox",
+        "selector": "#chat-textarea"
+      },
+      "el2": {
+        "role": "button",
+        "roleName": "百度一下",
+        "selector": "#chat-submit-button",
+        "text": "百度一下"
+      }
+    },
+    "humanize": {
+      "postDelay": [
+        100,
+        300
+      ],
+      "preDelay": [
+        100,
+        300
+      ]
+    },
+    "steps": [
+      {
+        "action": "type",
+        "target": {
+          "$ref": "el1"
+        },
+        "value": "{{inputs.keyword}}"
+      },
+      {
+        "action": "click",
+        "target": {
+          "$ref": "el2"
+        }
+      },
+      {
+        "action": "scrollBy",
+        "direction": "down",
+        "distance": 2,
+        "unit": "pages"
+      },
+      {
+        "action": "waitForElementVisible",
+        "target": {
+          "selector": "#content_left > .result",
+          "visible": true
+        }
+      },
+      {
+        "action": "extract",
+        "fields": {
+          "summary": {
+            "selector": ".c-row",
+            "type": "text"
+          },
+          "title": {
+            "selector": ".t",
+            "type": "text"
+          }
+        },
+        "multiple": true,
+        "name": "items",
+        "onEmpty": "fail",
+        "target": {
+          "selector": "#content_left > .result",
+          "visible": true
+        }
+      },
+      {
+        "action": "loop",
+        "as": "item",
+        "items": "{{extracted.items}}",
+        "steps": [
+          {
+            "action": "sendResult",
+            "immediate": true,
+            "payload": {
+              "summary": "{{loopItem.summary}}",
+              "title": "{{loopItem.title}}"
+            }
+          }
+        ],
+        "type": "forEach"
+      }
+    ],
+    "output": {},
+    "sendPolicy": {},
+    "hooks": {
+      "onError": [
+        {
+          "action": "saveSnapshot",
+          "name": "errorSnapshot"
+        },
+        {
+          "action": "flushResults"
+        }
+      ]
+    },
+    "tags": {},
+    "owner": "",
+    "approvalStatus": "",
+    "source": "",
+    "createdAt": "0001-01-01T00:00:00Z",
+    "updatedAt": "0001-01-01T00:00:00Z"
+  }
+}

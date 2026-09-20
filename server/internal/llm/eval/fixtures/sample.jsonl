@@ -1,0 +1,2 @@
+{"recording":{"events":[],"domSnapshots":[],"meta":{"startUrl":"http://example.com"}},"baseline":{"name":"sample","entry":"http://example.com","steps":[{"action":"navigate","url":"http://example.com"}]},"expectedFields":["title"],"expectedStableSelector":true}
+{"recording":{"events":[],"domSnapshots":[],"meta":{"startUrl":"http://example.com"}},"baseline":{"name":"sample","entry":"http://example.com","steps":[{"action":"navigate","url":"http://example.com"}]},"expectedFields":["price"],"expectedStableSelector":true}

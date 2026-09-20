@@ -1,0 +1,73 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  background-color: #f5f5f5;
+}
+
+.admin-layout {
+  min-height: 100vh;
+}
+
+.admin-content {
+  margin: 24px;
+  padding: 24px;
+  background: #fff;
+  border-radius: 8px;
+  min-height: 280px;
+}
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.stat-card {
+  text-align: center;
+}
+
+.stat-card .ant-statistic-content-value {
+  font-size: 28px;
+  font-weight: 600;
+}
+
+.code-preview {
+  background: #f6f8fa;
+  padding: 12px;
+  border-radius: 6px;
+  max-height: 400px;
+  overflow: auto;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: 13px;
+}
+
+.rule-json-diff {
+  background: #f6f8fa;
+  padding: 12px;
+  border-radius: 6px;
+  max-height: 480px;
+  overflow: auto;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  margin: 0;
+}
+
+.diff-add {
+  background-color: #d4edda;
+  color: #155724;
+}
+
+.diff-remove {
+  background-color: #f8d7da;
+  color: #721c24;
+}
+
+.diff-neutral {
+  background-color: transparent;
+}

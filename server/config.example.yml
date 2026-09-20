@@ -1,0 +1,46 @@
+# AegisCrawler 服务端配置示例
+#
+# 优先级：环境变量 > config.yml > 内置默认值。
+# 键名与环境变量一一对应（扁平结构，直接使用大写环境变量名）。
+# 文件路径默认为工作目录下的 config.yml，可用环境变量 CONFIG_PATH 覆盖
+# （CONFIG_PATH 本身只认环境变量）。
+#
+# 布尔值可写 true/false；数字按 YAML 标量书写；时长使用带单位的字符串
+# （如 60s、5m）；JSON 型变量（如 LLM_PROVIDER_CONFIGS）可直接写 YAML
+# 映射/数组，加载时会自动编码为 JSON。
+
+# ---- 监听与存储 ----
+LISTEN_ADDR: ":8080"
+DATABASE_PATH: opencrawler.db
+
+# ---- 安全密钥（生产必填，也可用环境变量注入）----
+WORKER_API_KEY: change-me-worker-key-long-and-random
+ADMIN_API_KEY: change-me-admin-key-long-and-random
+VARIABLE_ENCRYPTION_KEY: change-me-encryption-key-at-least-32-characters-long
+
+# ---- 任务调度 ----
+LEASE_DURATION: 60s
+SWEEPER_INTERVAL: 30s
+MAX_RETRIES: 3
+MAX_WORKER_TASKS: 5
+
+# ---- 限流与熔断 ----
+RATE_LIMIT_PER_SECOND: 100
+RATE_LIMIT_BURST: 150
+WORKER_RATE_LIMIT_PER_SECOND: 10
+WORKER_RATE_LIMIT_BURST: 15
+SITE_RATE_LIMIT_PER_SECOND: 5
+SITE_RATE_LIMIT_BURST: 8
+
+# ---- 功能开关 ----
+FEATURE_WORKFLOW_V2: false
+FEATURE_WORKER_PROTOCOL_V2: false
+FEATURE_RECORDING_V2: false
+
+# ---- LLM（本地/迁移用 legacy 路径；生产必须 enforced 并配置完整策略）----
+LLM_ENABLED: false
+# LLM_POLICY_MODE: legacy
+# LLM_PROVIDER: openai
+# LLM_MODEL: gpt-4o
+# LLM_BASE_URL: https://api.openai.com/v1
+# LLM_API_KEY: sk-...

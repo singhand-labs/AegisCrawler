@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AegisCrawler E2E Test Page</title>
+    <style>
+      body {
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        padding: 2rem;
+        max-width: 600px;
+        margin: 0 auto;
+      }
+      button {
+        padding: 0.5rem 1rem;
+        font-size: 1rem;
+        cursor: pointer;
+      }
+      #result {
+        margin-top: 1rem;
+        padding: 1rem;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        min-height: 1.5rem;
+      }
+      .result-list {
+        margin-top: 1rem;
+      }
+      .result-item {
+        padding: 0.75rem;
+        border: 1px solid #eee;
+        border-radius: 4px;
+        margin-bottom: 0.5rem;
+      }
+      .result-item h3 {
+        margin: 0 0 0.25rem;
+        font-size: 1rem;
+      }
+      .result-item p {
+        margin: 0;
+        color: #555;
+        font-size: 0.875rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>AegisCrawler E2E Test Page</h1>
+
+    <form id="search-form" action="" method="GET">
+      <input id="search-input" name="q" type="text" placeholder="Search..." />
+      <button id="search-button" type="submit">Search</button>
+    </form>
+
+    <button id="action-button" type="button">Click me</button>
+    <div id="result" data-testid="result">not clicked</div>
+
+    <div id="results" class="result-list"></div>
+
+    <script>
+      document.getElementById('action-button').addEventListener('click', function () {
+        document.getElementById('result').textContent = 'Hello from AegisCrawler!';
+      });
+
+      const params = new URLSearchParams(window.location.search);
+      const query = params.get('q');
+      if (query) {
+        document.getElementById('search-input').value = query;
+        document.title = 'Search results for ' + query;
+        document.getElementById('results').innerHTML =
+          '<div class="result result-item"><h3><a href="/item/1">Result for ' +
+          escapeHtml(query) +
+          '</a></h3><p class="c-abstract">This is a sample result about ' +
+          escapeHtml(query) +
+          '.</p></div>';
+      }
+
+      function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+      }
+    </script>
+  </body>
+</html>

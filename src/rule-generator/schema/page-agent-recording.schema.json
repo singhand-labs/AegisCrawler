@@ -1,0 +1,277 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://opencrawler.local/schemas/page-agent-recording.json",
+  "title": "PageAgentRecording",
+  "type": "object",
+  "required": ["version", "meta", "events", "snapshots"],
+  "properties": {
+    "version": { "enum": ["1.0.0", "2.0.0"] },
+    "meta": {
+      "type": "object",
+      "required": ["startUrl", "title", "recordedAt", "domain"],
+      "properties": {
+        "startUrl": { "type": "string", "format": "uri" },
+        "title": { "type": "string" },
+        "recordedAt": { "type": "string", "format": "date-time" },
+        "domain": { "type": "string" },
+        "userAgent": { "type": "string" },
+        "endedAt": { "type": "string", "format": "date-time" },
+        "serverRecordingId": { "type": "string" },
+        "semanticDomVersion": { "const": "1" },
+        "sanitizationVersion": { "enum": ["extension-v1", "extension-v2"] }
+      }
+    },
+    "events": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/event" }
+    },
+    "snapshots": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/snapshot" }
+    },
+    "limits": { "$ref": "#/definitions/limits" },
+    "warnings": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/warning" }
+    },
+    "termination": { "$ref": "#/definitions/termination" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "version": { "const": "2.0.0" } } },
+      "then": {
+        "required": ["limits", "termination"],
+        "properties": {
+          "meta": {
+            "required": ["endedAt", "semanticDomVersion", "sanitizationVersion"]
+          },
+          "snapshots": {
+            "minItems": 2,
+            "items": {
+              "required": ["phase", "sequence", "capture", "domTree"]
+            },
+            "allOf": [
+              {
+                "contains": {
+                  "type": "object",
+                  "required": ["phase"],
+                  "properties": { "phase": { "const": "initial" } }
+                }
+              },
+              {
+                "contains": {
+                  "type": "object",
+                  "required": ["phase"],
+                  "properties": { "phase": { "const": "final" } }
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "definitions": {
+    "limits": {
+      "type": "object",
+      "required": ["maxActions", "maxDurationMs", "maxBytes", "warningThreshold"],
+      "properties": {
+        "maxActions": { "type": "integer", "minimum": 1 },
+        "maxDurationMs": { "type": "integer", "minimum": 1 },
+        "maxBytes": { "type": "integer", "minimum": 1 },
+        "warningThreshold": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 }
+      }
+    },
+    "warning": {
+      "type": "object",
+      "required": ["kind", "message", "timestamp"],
+      "properties": {
+        "kind": { "enum": ["actions", "duration", "size", "capture"] },
+        "message": { "type": "string" },
+        "timestamp": { "type": "number" }
+      }
+    },
+    "termination": {
+      "type": "object",
+      "required": ["reason", "message", "timestamp", "complete"],
+      "properties": {
+        "reason": { "enum": ["user", "action-limit", "duration-limit", "size-limit", "capture-error"] },
+        "message": { "type": "string" },
+        "timestamp": { "type": "number" },
+        "complete": { "type": "boolean" }
+      }
+    },
+    "event": {
+      "type": "object",
+      "required": ["type", "timestamp"],
+      "properties": {
+        "type": {
+          "enum": ["navigate", "click", "inputText", "selectOption", "scroll", "executeJavascript", "wait", "extract", "submitForm"]
+        },
+        "timestamp": { "type": "number" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "const": "navigate" } } },
+          "then": { "required": ["url"], "properties": { "url": { "type": "string" } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "click" } } },
+          "then": { "required": ["index"], "properties": { "index": { "type": "number" }, "annotation": { "type": "string" } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "inputText" } } },
+          "then": { "required": ["index", "text"], "properties": { "index": { "type": "number" }, "text": { "type": "string" } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "selectOption" } } },
+          "then": { "required": ["index", "optionText"], "properties": { "index": { "type": "number" }, "optionText": { "type": "string" } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "scroll" } } },
+          "then": { "required": ["direction", "amount", "unit"], "properties": { "direction": { "enum": ["down", "up", "left", "right"] }, "amount": { "type": "number" }, "unit": { "enum": ["pages", "pixels"] }, "index": { "type": "number" } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "executeJavascript" } } },
+          "then": { "required": ["script"], "properties": { "script": { "type": "string" } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "wait" } } },
+          "then": { "required": ["duration"], "properties": { "duration": { "type": "number" } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "extract" } } },
+          "then": { "required": ["index", "fieldName", "mode"], "properties": { "index": { "type": "number" }, "fieldName": { "type": "string" }, "mode": { "enum": ["text", "html", "attribute"] }, "attribute": { "type": "string" }, "annotation": { "type": "string" } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "submitForm" } } },
+          "then": { "required": ["index"], "properties": { "index": { "type": "number" }, "submitterIndex": { "type": "number" } } }
+        }
+      ]
+    },
+    "snapshot": {
+      "type": "object",
+      "required": ["timestamp", "url", "selectorMap"],
+      "properties": {
+        "timestamp": { "type": "number" },
+        "url": { "type": "string" },
+        "selectorMap": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/definitions/elementInfo" }
+        },
+        "phase": { "enum": ["initial", "before-action", "final"] },
+        "sequence": { "type": "integer", "minimum": 0 },
+        "actionIndex": { "type": "integer", "minimum": 0 },
+        "capture": { "$ref": "#/definitions/capture" },
+        "domTree": { "$ref": "#/definitions/domNode" }
+      }
+    },
+    "domNode": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": { "enum": ["element", "text"] },
+        "tagName": { "type": "string" },
+        "text": { "type": "string" },
+        "attributes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "value"],
+            "properties": {
+              "name": { "type": "string" },
+              "value": { "type": "string" }
+            }
+          }
+        },
+        "children": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/domNode" }
+        },
+        "rendered": { "type": "boolean" },
+        "sanitization": { "$ref": "#/definitions/domSanitization" },
+        "frameOrigin": { "enum": ["same-origin", "cross-origin"] },
+        "frameSrc": { "type": "string" },
+        "framePlaceholder": { "type": "boolean" },
+        "frameMatched": { "type": "boolean" },
+        "frameStatus": { "enum": ["captured", "unavailable", "error"] },
+        "frameError": { "type": "string" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": ["type"],
+            "properties": { "type": { "const": "text" } }
+          },
+          "then": { "not": { "required": ["rendered"] } }
+        }
+      ]
+    },
+    "domSanitization": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "markupAltered": { "const": true },
+        "contentOmitted": { "const": true },
+        "alteredAttributes": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1, "maxLength": 128 }
+        }
+      },
+      "minProperties": 1
+    },
+    "capture": {
+      "type": "object",
+      "required": ["status", "nodeCount", "redactionCount", "removedNodeCount", "frames"],
+      "properties": {
+        "status": { "enum": ["complete", "partial", "failed"] },
+        "nodeCount": { "type": "integer", "minimum": 0 },
+        "redactionCount": { "type": "integer", "minimum": 0 },
+        "removedNodeCount": { "type": "integer", "minimum": 0 },
+        "frames": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/frameCapture" }
+        }
+      }
+    },
+    "frameCapture": {
+      "type": "object",
+      "required": ["frameId", "parentFrameId", "url", "status"],
+      "properties": {
+        "frameId": { "type": "integer" },
+        "parentFrameId": { "type": "integer" },
+        "url": { "type": "string" },
+        "status": { "enum": ["captured", "unavailable", "error"] },
+        "error": { "type": "string" }
+      }
+    },
+    "elementInfo": {
+      "type": "object",
+      "required": ["index", "tagName", "selector", "boundingRect"],
+      "properties": {
+        "index": { "type": "number" },
+        "tagName": { "type": "string" },
+        "selector": { "type": "string" },
+        "stableSelector": { "type": "string" },
+        "text": { "type": "string" },
+        "ariaLabel": { "type": "string" },
+        "role": { "type": "string" },
+        "placeholder": { "type": "string" },
+        "name": { "type": "string" },
+        "boundingRect": {
+          "type": "object",
+          "required": ["x", "y", "width", "height"],
+          "properties": {
+            "x": { "type": "number" },
+            "y": { "type": "number" },
+            "width": { "type": "number" },
+            "height": { "type": "number" }
+          }
+        }
+      }
+    }
+  }
+}

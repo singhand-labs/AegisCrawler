@@ -1,0 +1,262 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, ready_for_review, reopened, synchronize]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  repository-integrity:
+    name: Repository integrity
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout complete history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Test repository integrity policy
+        run: npm run test:repository-integrity
+
+      - name: Verify pull-request commit metadata
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: >-
+          node scripts/repository-integrity.mjs commit-range
+          --base "$BASE_SHA"
+          --head "$HEAD_SHA"
+
+      - name: Verify dispatched commit metadata
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          HEAD_SHA: ${{ github.sha }}
+        run: >-
+          node scripts/repository-integrity.mjs commit
+          --sha "$HEAD_SHA"
+
+  node:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
+    needs: repository-integrity
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            admin-ui/package-lock.json
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          npm ci --prefix admin-ui
+
+      - name: Lint and type-check
+        run: npm run lint
+
+      - name: Verify generated DSL schema
+        run: |
+          npm run generate-schema
+          git diff --exit-code -- src/rule-engine/schemas/action.schema.json
+
+      - name: Test root and Admin UI
+        run: npm test
+
+      - name: Test external qualification contract
+        run: npm run test:external:contract
+
+      - name: Build browser artifacts
+        run: |
+          npm run build:extension
+          npm run package:extension
+          npm run build:userscript
+
+  go:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
+    needs: repository-integrity
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: admin-ui/package-lock.json
+
+      - name: Install Admin UI dependencies
+        run: npm ci --prefix admin-ui
+
+      - name: Build Admin UI
+        run: npm run build:admin
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.2'
+          cache-dependency-path: server/go.sum
+
+      - name: Test, vet, and build server
+        working-directory: server
+        run: |
+          go test ./...
+          go test -tags llm_integration ./internal/llm/... -run '^$'
+          go vet ./...
+          go build ./...
+
+  deployment-e2e:
+    needs: [node, go]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.2'
+          cache-dependency-path: server/go.sum
+
+      - run: npm ci
+      - run: npm run test:e2e
+
+  browser-e2e:
+    needs: [node, go]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.2'
+          cache-dependency-path: server/go.sum
+
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: xvfb-run -a npm run test:e2e:browser
+
+  staging-e2e:
+    needs: [node, go]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.2'
+          cache-dependency-path: server/go.sum
+
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: xvfb-run -a npm run test:e2e:staging
+
+  # Replay-stability E2E (D-1). Hermetic: replay-mv3-stability spins up its
+  # own localhost HTTP test fixture; chunking + worker import buildServer
+  # from e2e-deployment-test (real Go server, fake LLM, no external
+  # services). All three verified 3/3 stable locally before CI wiring.
+  # `needs: [node, go]` is for gate ordering — chunking + worker consume
+  # Go artifacts via e2e-deployment-test.buildServer.
+  replay-e2e:
+    needs: [node, go]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.2'
+          cache-dependency-path: server/go.sum
+
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: xvfb-run -a npm run test:e2e:replay
+
+  server-image:
+    needs: [node, go]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Validate production image and recovery
+        run: npm run test:e2e:production

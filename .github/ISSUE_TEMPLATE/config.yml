@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 安全漏洞披露
+    url: https://github.com/singhand-labs/AegisCrawler/security/advisories/new
+    about: 发现安全漏洞？请走私密披露流程，不要在 Issue 中公开。详见 SECURITY.md。
+  - name: GitHub Discussions
+    url: https://github.com/singhand-labs/AegisCrawler/discussions
+    about: 通用问题、使用咨询、架构讨论请发在 Discussions。

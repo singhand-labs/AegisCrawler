@@ -1,0 +1,70 @@
+id: form-submission-demo
+version: 1.0.0
+name: 表单填写与提交演示
+domain: demo-form.example.com
+enabled: true
+selectors:
+  username: { selector: "#username" }
+  email: { selector: "#email" }
+  genderFemale: { selector: "input[name=gender][value=female]" }
+  agreeTerms: { selector: "#agree-terms" }
+  country: { selector: "#country" }
+  avatarInput: { selector: "input[type=file]#avatar" }
+  submitBtn: { selector: "#submit" }
+  successMsg: { selector: ".success-message" }
+steps:
+  - action: navigate
+    url: "https://demo-form.example.com/register"
+    waitUntil: domcontentloaded
+
+  - action: waitFor
+    target: { $ref: "selectors.username" }
+
+  - action: type
+    target: { $ref: "selectors.username" }
+    value: "testuser_{{random}}"
+    humanize:
+      typingDelay: [50, 120]
+
+  - action: type
+    target: { $ref: "selectors.email" }
+    value: "testuser_{{random}}@example.com"
+
+  - action: selectRadio
+    target: { $ref: "selectors.genderFemale" }
+
+  - action: select
+    target: { $ref: "selectors.country" }
+    value: "CN"
+    by: value
+
+  - action: check
+    target: { $ref: "selectors.agreeTerms" }
+    state: true
+
+  - action: uploadFile
+    target: { $ref: "selectors.avatarInput" }
+    files: ["/tmp/avatar.png"]
+
+  - action: moveMouse
+    to: { $ref: "selectors.submitBtn" }
+    duration: [300, 600]
+
+  - action: click
+    target: { $ref: "selectors.submitBtn" }
+    humanize:
+      preDelay: [400, 800]
+      randomOffset: 3
+
+  - action: waitFor
+    target: { $ref: "selectors.successMsg" }
+    timeout: 15000
+
+  - action: extractText
+    name: successText
+    target: { $ref: "selectors.successMsg" }
+
+  - action: sendResult
+    payload:
+      success: true
+      message: "{{extracted.successText}}"

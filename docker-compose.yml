@@ -1,0 +1,132 @@
+services:
+  opencrawler:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    container_name: opencrawler-page-agent-service
+    user: "1000:1000"
+    init: true
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - opencrawler_data:/data
+      # Advanced users who manage host permissions themselves can bind-mount instead:
+      # - ./data:/data
+    environment:
+      - LISTEN_ADDR=:8080
+      - DATABASE_PATH=/data/opencrawler.db
+      - LEASE_DURATION=60s
+      - SWEEPER_INTERVAL=30s
+      - MAX_RETRIES=3
+      - MAX_WORKER_TASKS=5
+      - RATE_LIMIT_PER_SECOND=100
+      - RATE_LIMIT_BURST=150
+      - WORKER_RATE_LIMIT_PER_SECOND=10
+      - WORKER_RATE_LIMIT_BURST=15
+      - SITE_RATE_LIMIT_PER_SECOND=5
+      - SITE_RATE_LIMIT_BURST=8
+      - CIRCUIT_BREAKER_FAILURE_THRESHOLD=5
+      - CIRCUIT_BREAKER_FAILURE_WINDOW=60s
+      - CIRCUIT_BREAKER_OPEN_DURATION=30s
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - REQUIRE_SECURITY_KEYS=true
+      # Security keys must be set before starting the service. Do not leave them empty.
+      # WORKER_API_KEY secures worker-facing endpoints.
+      # ADMIN_API_KEY secures /admin/rules and /admin/tasks.
+      # VARIABLE_ENCRYPTION_KEY encrypts sensitive rule variables.
+      # METRICS_API_KEY optionally secures the /metrics endpoint.
+      # SWAGGER_API_KEY optionally secures the Swagger UI and spec endpoints.
+      - WORKER_API_KEY=${WORKER_API_KEY:?WORKER_API_KEY is required}
+      - ADMIN_API_KEY=${ADMIN_API_KEY:?ADMIN_API_KEY is required}
+      - VARIABLE_ENCRYPTION_KEY=${VARIABLE_ENCRYPTION_KEY:?VARIABLE_ENCRYPTION_KEY is required}
+      - METRICS_API_KEY=${METRICS_API_KEY:-}
+      - SWAGGER_API_KEY=${SWAGGER_API_KEY:-}
+      - FEATURE_RECORDING_V2=${FEATURE_RECORDING_V2:-false}
+      - FEATURE_WORKFLOW_V2=${FEATURE_WORKFLOW_V2:-false}
+      - FEATURE_WORKER_PROTOCOL_V2=${FEATURE_WORKER_PROTOCOL_V2:-false}
+      - FEATURE_MCP=${FEATURE_MCP:-false}
+      - MCP_RATE_LIMIT_PER_SECOND=${MCP_RATE_LIMIT_PER_SECOND:-10}
+      - MCP_RATE_LIMIT_BURST=${MCP_RATE_LIMIT_BURST:-20}
+      # LLM policy selection is explicit: production LLM traffic must use
+      # enforced mode, while disabled/local migration deployments may select
+      # legacy. This prevents LLM_ENABLED=true from silently using legacy mode.
+      - LLM_ENABLED=${LLM_ENABLED:-false}
+      - LLM_POLICY_MODE=${LLM_POLICY_MODE:?LLM_POLICY_MODE is required; use enforced for production LLM or legacy when disabled/local}
+      # Enforced primary route. Secrets remain runtime-injected placeholders.
+      - LLM_PRIMARY_PROVIDER=${LLM_PRIMARY_PROVIDER:-}
+      - LLM_PRIMARY_ADAPTER=${LLM_PRIMARY_ADAPTER:-}
+      - LLM_PRIMARY_MODEL=${LLM_PRIMARY_MODEL:-}
+      - LLM_PRIMARY_BASE_URL=${LLM_PRIMARY_BASE_URL:-}
+      - LLM_PRIMARY_API_KEY=${LLM_PRIMARY_API_KEY:-}
+      - LLM_PRIMARY_REQUEST_TIMEOUT=${LLM_PRIMARY_REQUEST_TIMEOUT:-}
+      - LLM_PRIMARY_TEMPERATURE=${LLM_PRIMARY_TEMPERATURE:-}
+      - LLM_PRIMARY_STRICT_TOOL_OUTPUT=${LLM_PRIMARY_STRICT_TOOL_OUTPUT:-}
+      - LLM_PRIMARY_ENABLE_THINKING=${LLM_PRIMARY_ENABLE_THINKING:-}
+      - LLM_PRIMARY_INPUT_USD_PER_MILLION=${LLM_PRIMARY_INPUT_USD_PER_MILLION:-}
+      - LLM_PRIMARY_CACHED_INPUT_USD_PER_MILLION=${LLM_PRIMARY_CACHED_INPUT_USD_PER_MILLION:-}
+      - LLM_PRIMARY_OUTPUT_USD_PER_MILLION=${LLM_PRIMARY_OUTPUT_USD_PER_MILLION:-}
+      - LLM_PRIMARY_MAX_INPUT_TOKENS=${LLM_PRIMARY_MAX_INPUT_TOKENS:-}
+      - LLM_PRIMARY_MAX_OUTPUT_TOKENS=${LLM_PRIMARY_MAX_OUTPUT_TOKENS:-}
+      - LLM_PRIMARY_OUTPUT_CAP_DIALECT=${LLM_PRIMARY_OUTPUT_CAP_DIALECT:-}
+      - LLM_PRIMARY_PRICE_REVISION=${LLM_PRIMARY_PRICE_REVISION:-}
+      # Optional enforced fallback. Setting any field requires the complete,
+      # independently priced fallback route.
+      - LLM_FALLBACK_PROVIDER=${LLM_FALLBACK_PROVIDER:-}
+      - LLM_FALLBACK_ADAPTER=${LLM_FALLBACK_ADAPTER:-}
+      - LLM_FALLBACK_MODEL=${LLM_FALLBACK_MODEL:-}
+      - LLM_FALLBACK_BASE_URL=${LLM_FALLBACK_BASE_URL:-}
+      - LLM_FALLBACK_API_KEY=${LLM_FALLBACK_API_KEY:-}
+      - LLM_FALLBACK_REQUEST_TIMEOUT=${LLM_FALLBACK_REQUEST_TIMEOUT:-}
+      - LLM_FALLBACK_TEMPERATURE=${LLM_FALLBACK_TEMPERATURE:-}
+      - LLM_FALLBACK_STRICT_TOOL_OUTPUT=${LLM_FALLBACK_STRICT_TOOL_OUTPUT:-}
+      - LLM_FALLBACK_ENABLE_THINKING=${LLM_FALLBACK_ENABLE_THINKING:-}
+      - LLM_FALLBACK_INPUT_USD_PER_MILLION=${LLM_FALLBACK_INPUT_USD_PER_MILLION:-}
+      - LLM_FALLBACK_CACHED_INPUT_USD_PER_MILLION=${LLM_FALLBACK_CACHED_INPUT_USD_PER_MILLION:-}
+      - LLM_FALLBACK_OUTPUT_USD_PER_MILLION=${LLM_FALLBACK_OUTPUT_USD_PER_MILLION:-}
+      - LLM_FALLBACK_MAX_INPUT_TOKENS=${LLM_FALLBACK_MAX_INPUT_TOKENS:-}
+      - LLM_FALLBACK_MAX_OUTPUT_TOKENS=${LLM_FALLBACK_MAX_OUTPUT_TOKENS:-}
+      - LLM_FALLBACK_OUTPUT_CAP_DIALECT=${LLM_FALLBACK_OUTPUT_CAP_DIALECT:-}
+      - LLM_FALLBACK_PRICE_REVISION=${LLM_FALLBACK_PRICE_REVISION:-}
+      # Exact hard budgets and independent automatic-attempt limits.
+      - LLM_GLOBAL_MAX_REQUEST_USD=${LLM_GLOBAL_MAX_REQUEST_USD:-}
+      - LLM_GLOBAL_DAILY_BUDGET_USD=${LLM_GLOBAL_DAILY_BUDGET_USD:-}
+      - LLM_WORKSPACE_BUDGETS_JSON=${LLM_WORKSPACE_BUDGETS_JSON:-}
+      - LLM_REQUIREMENT_MAX_ATTEMPTS=${LLM_REQUIREMENT_MAX_ATTEMPTS:-}
+      - LLM_DSL_GENERATION_MAX_ATTEMPTS=${LLM_DSL_GENERATION_MAX_ATTEMPTS:-}
+      - LLM_DSL_MAX_REPAIRS=${LLM_DSL_MAX_REPAIRS:-}
+      - LLM_SELECTOR_MAX_REPAIRS=${LLM_SELECTOR_MAX_REPAIRS:-}
+      # Legacy-only settings remain available for an explicit local migration
+      # deployment. Non-empty legacy values make enforced startup fail closed.
+      - LLM_PROVIDER=${LLM_PROVIDER:-}
+      - LLM_API_KEY=${LLM_API_KEY:-}
+      - LLM_BASE_URL=${LLM_BASE_URL:-}
+      - LLM_MODEL=${LLM_MODEL:-}
+      - LLM_TEMPERATURE=${LLM_TEMPERATURE:-}
+      - LLM_MAX_RETRIES=${LLM_MAX_RETRIES:-}
+      - LLM_REQUEST_TIMEOUT=${LLM_REQUEST_TIMEOUT:-}
+      - LLM_JOB_MAX_ATTEMPTS=${LLM_JOB_MAX_ATTEMPTS:-}
+      - LLM_OPENAI_ENABLE_THINKING=${LLM_OPENAI_ENABLE_THINKING:-}
+      - LLM_OPENAI_STRICT_TOOL_OUTPUT=${LLM_OPENAI_STRICT_TOOL_OUTPUT:-}
+      - LLM_ALLOW_DEGRADED_FALLBACK=${LLM_ALLOW_DEGRADED_FALLBACK:-}
+      - LLM_TEMPERATURE_COMPATIBILITY_RETRY=${LLM_TEMPERATURE_COMPATIBILITY_RETRY:-}
+      - LLM_DSL_SELECTOR_REPAIR_ENABLED=${LLM_DSL_SELECTOR_REPAIR_ENABLED:-}
+      - LLM_ENABLE_REFLECTION=${LLM_ENABLE_REFLECTION:-true}
+      - LLM_CACHE_TTL=${LLM_CACHE_TTL:-24h}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - 'http://127.0.0.1:8080/health?ready=1' | grep -q '\"status\":\"ok\"'"]
+      interval: 10s
+      timeout: 3s
+      start_period: 10s
+      retries: 3
+    stop_grace_period: 15s
+    restart: unless-stopped
+
+volumes:
+  opencrawler_data:

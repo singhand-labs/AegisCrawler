@@ -1,0 +1,81 @@
+id: auth-and-human-loop
+version: 1.0.0
+name: 登录态刷新与人机协作
+domain: protected.example.com
+enabled: true
+selectors:
+  loginForm: { selector: "#login-form" }
+  username: { selector: "#username" }
+  password: { selector: "#password" }
+  loginBtn: { selector: "#login-btn" }
+  captchaImage: { selector: ".captcha-img" }
+  dashboard: { selector: ".dashboard" }
+steps:
+  - action: navigate
+    url: "https://protected.example.com/dashboard"
+
+  - id: check-login-required
+    action: if
+    condition:
+      type: elementExists
+      target: { $ref: "selectors.loginForm" }
+    then:
+      - action: type
+        target: { $ref: "selectors.username" }
+        value: "{{username}}"
+
+      - action: type
+        target: { $ref: "selectors.password" }
+        value: "{{password}}"
+        humanize:
+          typingDelay: [30, 80]
+
+      - id: solve-captcha-or-ask-human
+        action: if
+        condition:
+          type: elementExists
+          target: { $ref: "selectors.captchaImage" }
+        then:
+          - action: requestHuman
+            type: captcha
+            prompt: "请输入图片中的验证码"
+            timeout: 120000
+            then:
+              - action: type
+                target: { selector: "#captcha-input" }
+                value: "{{humanInput.captcha}}"
+
+      - action: click
+        target: { $ref: "selectors.loginBtn" }
+
+      - action: waitFor
+        target: { $ref: "selectors.dashboard" }
+        timeout: 20000
+
+  - id: refresh-session-if-needed
+    action: if
+    condition:
+      type: textContains
+      target: { selector: ".session-warning" }
+      text: "即将过期"
+    then:
+      - action: refreshSession
+        method: requestNewToken
+
+  - id: extract-dashboard-data
+    action: extract
+    name: dashboardData
+    target: { selector: ".dashboard" }
+    fields:
+      balance:
+        type: number
+        selector: ".balance"
+        regex: '\\d+\\.?\\d*'
+      unreadCount:
+        type: number
+        selector: ".unread-badge"
+        default: 0
+
+  - action: sendResult
+    payload:
+      data: "{{extracted.dashboardData}}"

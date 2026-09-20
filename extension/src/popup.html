@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AegisCrawler 录制器</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header>
+      <h1>AegisCrawler 录制器</h1>
+      <div id="status" aria-live="polite">就绪</div>
+    </header>
+
+    <section class="config-section">
+      <h2>服务端配置</h2>
+      <label for="baseUrl">服务端地址</label>
+      <input id="baseUrl" type="text" placeholder="http://localhost:8080" />
+      <label for="apiKey">Worker API Key</label>
+      <input id="apiKey" type="password" placeholder="可选" />
+      <label for="adminApiKey">Admin API Key</label>
+      <input id="adminApiKey" type="password" placeholder="可选" />
+      <label class="checkbox-label">
+        <input id="remember-session" type="checkbox" checked />
+        在当前浏览器会话中记住密钥
+      </label>
+      <p class="warning-text">API 密钥不会跨浏览器重启保留。</p>
+      <button id="save-config">保存配置</button>
+    </section>
+
+    <section class="recording-section">
+      <h2>录制</h2>
+      <button id="start-recording">开始录制</button>
+      <button id="stop-recording" disabled>停止录制</button>
+    </section>
+
+    <section class="rule-section">
+      <h2>规则操作</h2>
+      <button id="download-rule" disabled>下载规则</button>
+    </section>
+
+    <section class="rule-section">
+      <h2>AI 增强</h2>
+      <label for="userHint">优化意图（可选）</label>
+      <input id="userHint" type="text" placeholder="例如：把商品标题和价格一起抓下来" />
+      <button id="enhance-rule" disabled>AI 增强生成</button>
+    </section>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

@@ -1,0 +1,18 @@
+页面元数据：
+{{.Meta}}
+
+用户意图：{{.UserHint}}
+
+完整 DOM 树：
+{{.DomTree}}
+
+Baseline 规则（JSON）：
+{{.BaselineRule}}
+
+录制事件序列：
+{{.Events}}
+
+脱水 DOM 元素快照：
+{{.Snapshots}}
+
+请输出增强补丁。

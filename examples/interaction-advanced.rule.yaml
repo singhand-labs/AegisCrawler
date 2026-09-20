@@ -1,0 +1,58 @@
+id: interaction-advanced-demo
+version: 1.0.0
+name: 高级交互：悬停菜单、拖拽、滑块、长按
+domain: interaction-demo.example.com
+enabled: true
+steps:
+  - action: navigate
+    url: "https://interaction-demo.example.com"
+
+  - id: hover-menu-click
+    action: hoverClick
+    hoverTarget: { selector: ".user-menu" }
+    clickTarget: { selector: ".user-menu .logout" }
+    menuAppearTimeout: 800
+    maxDistance: 120
+
+  - id: dismiss-modal-if-present
+    action: if
+    condition:
+      type: elementExists
+      target: { selector: ".modal" }
+    then:
+      - action: pressKey
+        keys: ["Escape"]
+      - action: waitForTimeout
+        ms: [300, 600]
+
+  - id: drag-sort
+    action: dragAndDrop
+    source: { selector: ".sortable-item:nth-child(1)" }
+    target: { selector: ".sortable-item:nth-child(3)" }
+    duration: [600, 1200]
+    humanize:
+      wobble: 3
+
+  - id: slide-verify
+    action: slide
+    target: { selector: ".slider-track" }
+    direction: right
+    distance: 260
+    duration: [800, 1500]
+
+  - id: press-record-button
+    action: pressAndHold
+    target: { selector: ".record-button" }
+    duration: [2000, 3000]
+
+  - id: scroll-with-pause
+    action: scrollBy
+    direction: down
+    distance: 500
+    humanize:
+      scrollSpeed: [300, 600]
+      scrollPause: [400, 900]
+
+  - action: sendLog
+    level: info
+    message: "高级交互演示完成"

@@ -1,0 +1,35 @@
+node_modules/
+dist/
+coverage/
+.superpowers/
+.worktrees/
+worktrees/
+server/*.exe
+server/opencrawler.db
+server/opencrawler.db-*
+server/.bin/
+server/web/admin/*
+!server/web/admin/.gitkeep
+*.log
+
+# 本地环境与编辑器
+.env
+.env.local
+.env.*.local
+.idea/
+.vscode/
+*.swp
+.DS_Store
+.npmcache/
+.stage11b-report*.json
+
+# 本机 agent handover 与工具/资格测试工件
+AGENTS.local.md
+.tools/
+
+# local test config (machine-specific, see AGENTS.md)
+config.local.yml
+config.staging.yml
+
+# Temporarily unpublished; kept locally for contributor workflows (issue #244)
+docs/

@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MiniPad Air model configurator</title>
+  <!--
+    Compact Apple-like qualification target. The visible configurator shows
+    one model at a time, while the hidden fallback repeats every model by color.
+  -->
+  <style>
+    body { font-family: -apple-system, "Segoe UI", sans-serif; margin: 0; padding: 24px; color: #1d1d1f; }
+    main { max-width: 760px; margin: auto; }
+    h1 { font-size: 24px; margin: 0 0 8px; }
+    .intro, #selection-status { color: #6e6e73; }
+    .choices { display: grid; grid-template-columns: repeat(2, minmax(260px, 1fr)); gap: 10px; }
+    fieldset { border: 1px solid #d2d2d7; border-radius: 8px; padding: 10px 12px; }
+    legend { font-weight: 600; }
+    label { display: inline-block; margin: 4px 12px 4px 0; }
+    #next-model { margin: 12px 0; padding: 9px 16px; border: 0; border-radius: 7px; background: #0071e3; color: white; }
+    #next-model:disabled { background: #a1a1a6; }
+    #model-viewport { max-width: 360px; }
+    .model-card { border: 1px solid #d2d2d7; border-radius: 8px; padding: 12px; }
+    .model-card > span { display: block; margin: 3px 0; }
+    .model-price { font-weight: 700; }
+    .model-colors { margin: 6px 0 0; padding-left: 20px; color: #6e6e73; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>MiniPad Air</h1>
+    <p class="intro">Choose a sample configuration, then use Next model to traverse all 8 models.</p>
+
+    <section id="interactive-configurator" aria-label="Visible interactive configurator">
+      <div class="choices">
+        <fieldset>
+          <legend>Size</legend>
+          <label><input type="radio" name="size" value="11-inch" /> 11-inch model</label>
+          <label><input type="radio" name="size" value="13-inch" /> 13-inch model</label>
+        </fieldset>
+        <fieldset>
+          <legend>Color</legend>
+          <label><input type="radio" name="color" value="Sky Blue" /> Sky Blue</label>
+          <label><input type="radio" name="color" value="Violet" /> Violet</label>
+        </fieldset>
+        <fieldset>
+          <legend>Storage</legend>
+          <label><input type="radio" name="storage" value="128GB" /> 128GB</label>
+          <label><input type="radio" name="storage" value="256GB" /> 256GB</label>
+        </fieldset>
+        <fieldset>
+          <legend>Connectivity</legend>
+          <label><input type="radio" name="connectivity" value="Wi-Fi" /> Wi-Fi</label>
+          <label><input type="radio" name="connectivity" value="Wi-Fi + Cellular" /> Wi-Fi + Cellular</label>
+        </fieldset>
+      </div>
+      <p id="selection-status" aria-live="polite">Choose one option in every group.</p>
+      <section id="model-viewport" aria-label="Current visible model" hidden>
+        <p id="model-position" aria-live="polite"></p>
+        <div id="current-model"></div>
+        <button id="next-model" type="button" disabled>Next model</button>
+      </section>
+    </section>
+
+    <!-- Deliberately tempting but invalid extraction source, analogous to Apple's fallback matrix. -->
+    <section class="product-selection-area noscript fallback-matrix" aria-hidden="true" hidden>
+      <h2>Fallback purchase configurations</h2>
+      <div id="fallback-models"></div>
+    </section>
+  </main>
+
+  <script>
+    (function () {
+      var models = [
+        ['11-inch', '128GB', 'Wi-Fi', '$599.00'],
+        ['11-inch', '128GB', 'Wi-Fi + Cellular', '$749.00'],
+        ['11-inch', '256GB', 'Wi-Fi', '$699.00'],
+        ['11-inch', '256GB', 'Wi-Fi + Cellular', '$849.00'],
+        ['13-inch', '128GB', 'Wi-Fi', '$799.00'],
+        ['13-inch', '128GB', 'Wi-Fi + Cellular', '$949.00'],
+        ['13-inch', '256GB', 'Wi-Fi', '$899.00'],
+        ['13-inch', '256GB', 'Wi-Fi + Cellular', '$1,049.00']
+      ];
+      var colors = ['Sky Blue', 'Violet'];
+      var groups = ['size', 'color', 'storage', 'connectivity'];
+      var status = document.getElementById('selection-status');
+      var viewport = document.getElementById('model-viewport');
+      var position = document.getElementById('model-position');
+      var current = document.getElementById('current-model');
+      var next = document.getElementById('next-model');
+      var fallback = document.getElementById('fallback-models');
+      var currentIndex = 0;
+
+      function modelCard(model, color) {
+        var article = document.createElement('article');
+        article.className = color ? 'item fallback-item' : 'model-card';
+        article.innerHTML =
+          '<span class="model-size" aria-label="Size">' + model[0] + '</span>' +
+          '<span class="model-storage" aria-label="Storage">' + model[1] + '</span>' +
+          '<span class="model-connectivity" aria-label="Connectivity">' + model[2] + '</span>' +
+          (color ? '<span class="model-color" aria-label="Color">' + color + '</span>' :
+            '<ul class="model-colors" aria-label="Available colors"><li>Sky Blue</li><li>Violet</li></ul>') +
+          '<span class="model-price current_price" aria-label="Price">' + model[3] + '</span>';
+        return article;
+      }
+
+      models.forEach(function (model) {
+        colors.forEach(function (color) { fallback.appendChild(modelCard(model, color)); });
+      });
+
+      function renderCurrentModel() {
+        current.textContent = '';
+        current.appendChild(modelCard(models[currentIndex]));
+        position.textContent = 'Model ' + (currentIndex + 1) + ' of ' + models.length;
+        viewport.hidden = false;
+        next.disabled = false;
+      }
+
+      function updateSelection() {
+        var selected = groups.map(function (name) {
+          return document.querySelector('input[name="' + name + '"]:checked');
+        });
+        if (selected.some(function (input) { return !input; })) {
+          status.textContent = 'Choose one option in every group.';
+          viewport.hidden = true;
+          next.disabled = true;
+          return;
+        }
+        status.textContent = 'Sample selected: ' + selected.map(function (input) { return input.value; }).join(', ');
+        currentIndex = models.findIndex(function (model) {
+          return model[0] === selected[0].value && model[1] === selected[2].value && model[2] === selected[3].value;
+        });
+        if (currentIndex < 0) currentIndex = 0;
+        renderCurrentModel();
+      }
+
+      groups.forEach(function (name) {
+        Array.prototype.forEach.call(document.querySelectorAll('input[name="' + name + '"]'), function (input) {
+          input.addEventListener('change', updateSelection);
+        });
+      });
+
+      next.addEventListener('click', function () {
+        currentIndex = (currentIndex + 1) % models.length;
+        renderCurrentModel();
+      });
+    })();
+  </script>
+</body>
+</html>

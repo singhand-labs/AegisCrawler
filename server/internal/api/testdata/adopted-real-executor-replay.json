@@ -1,0 +1,189 @@
+{
+  "schemaVersion": "aegiscrawler.real-executor-replay.v1",
+  "rule": {
+    "id": "fixture-products",
+    "version": "1",
+    "name": "Fixture products",
+    "domain": "fixture.local",
+    "enabled": false,
+    "entry": "https://fixture.local/products",
+    "variables": {
+      "keyword": ""
+    },
+    "steps": [
+      {
+        "action": "type",
+        "target": {
+          "selector": "#search"
+        },
+        "value": "{{keyword}}"
+      },
+      {
+        "action": "extractText",
+        "name": "name",
+        "target": {
+          "selector": ".product-name",
+          "visible": true
+        }
+      },
+      {
+        "action": "extract",
+        "name": "price",
+        "target": {
+          "selector": ".product-price",
+          "visible": true
+        },
+        "fields": {
+          "details": {
+            "type": "exists",
+            "selector": ".amount",
+            "visible": true,
+            "fields": {
+              "price": {
+                "type": "number",
+                "visible": true
+              }
+            }
+          }
+        }
+      },
+      {
+        "action": "sendResult",
+        "payload": {
+          "name": "{{extracted.name}}",
+          "price": "{{extracted.price.details.price}}"
+        },
+        "immediate": true
+      }
+    ]
+  },
+  "variables": {
+    "keyword": "books"
+  },
+  "scenarios": [
+    {
+      "name": "invalid-output",
+      "taskId": "offline-adopted-replay-invalid",
+      "workerId": "offline-production-executor",
+      "title": "Offline invalid product",
+      "body": "<main><input id=\"search\"><span class=\"product-name\">Example product</span><span class=\"product-price\"><strong class=\"amount\">unavailable</strong></span></main>",
+      "expected": {
+        "inputValue": "books",
+        "executionResult": {
+          "status": "success",
+          "message": "",
+          "partialData": {
+            "name": "Example product",
+            "price": {
+              "details": {
+                "price": null
+              }
+            }
+          },
+          "snapshots": []
+        },
+        "emittedResults": [
+          {
+            "payload": {
+              "name": "Example product",
+              "price": ""
+            },
+            "immediate": true
+          },
+          {
+            "payload": {
+              "__final": true,
+              "taskId": "offline-adopted-replay-invalid"
+            },
+            "immediate": true
+          }
+        ],
+        "statusEvents": [
+          {
+            "status": "running",
+            "message": "Started rule fixture-products"
+          },
+          {
+            "status": "success",
+            "message": ""
+          }
+        ],
+        "replayCompletion": {
+          "succeeded": true,
+          "diagnostics": {
+            "executor": "production-runRule",
+            "scenario": "invalid-output",
+            "executionStatus": "success",
+            "businessResultCount": 1
+          },
+          "output": {
+            "name": "Example product",
+            "price": ""
+          }
+        }
+      }
+    },
+    {
+      "name": "valid-output",
+      "taskId": "offline-adopted-replay-valid",
+      "workerId": "offline-production-executor",
+      "title": "Offline valid product",
+      "body": "<main><input id=\"search\"><span class=\"product-name\">Example product</span><span class=\"product-price\"><strong class=\"amount\">$12.50</strong></span></main>",
+      "expected": {
+        "inputValue": "books",
+        "executionResult": {
+          "status": "success",
+          "message": "",
+          "partialData": {
+            "name": "Example product",
+            "price": {
+              "details": {
+                "price": 12.5
+              }
+            }
+          },
+          "snapshots": []
+        },
+        "emittedResults": [
+          {
+            "payload": {
+              "name": "Example product",
+              "price": 12.5
+            },
+            "immediate": true
+          },
+          {
+            "payload": {
+              "__final": true,
+              "taskId": "offline-adopted-replay-valid"
+            },
+            "immediate": true
+          }
+        ],
+        "statusEvents": [
+          {
+            "status": "running",
+            "message": "Started rule fixture-products"
+          },
+          {
+            "status": "success",
+            "message": ""
+          }
+        ],
+        "replayCompletion": {
+          "succeeded": true,
+          "diagnostics": {
+            "executor": "production-runRule",
+            "scenario": "valid-output",
+            "executionStatus": "success",
+            "businessResultCount": 1
+          },
+          "output": {
+            "name": "Example product",
+            "price": 12.5
+          }
+        }
+      }
+    }
+  ]
+}

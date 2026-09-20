@@ -1,0 +1,60 @@
+name: Main integrity
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  provenance:
+    name: PR provenance audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout complete history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Test repository integrity policy
+        run: npm run test:repository-integrity
+
+      - name: Verify pushed commit metadata
+        id: metadata
+        continue-on-error: true
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+          AFTER_SHA: ${{ github.event.after }}
+        run: >-
+          node scripts/repository-integrity.mjs commit-range
+          --base "$BEFORE_SHA"
+          --head "$AFTER_SHA"
+
+      - name: Verify merged-PR provenance
+        id: pr-provenance
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: >-
+          node scripts/repository-integrity.mjs main-push
+          --event "$GITHUB_EVENT_PATH"
+
+      - name: Enforce integrity result
+        if: always()
+        env:
+          METADATA_OUTCOME: ${{ steps.metadata.outcome }}
+          PROVENANCE_OUTCOME: ${{ steps.pr-provenance.outcome }}
+        run: |
+          if [ "$METADATA_OUTCOME" != "success" ] || [ "$PROVENANCE_OUTCOME" != "success" ]; then
+            echo "::error::main received a push that failed repository-integrity policy"
+            exit 1
+          fi

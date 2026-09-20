@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fixture Shop — AegisCrawler live workflow</title>
+  <!--
+    Tiny static collection target for the opt-in live full-workflow suite.
+    Served per-run by startShopFixtureServer (scripts/live-workflow/support.ts).
+    Deliberately small DOM: small recording snapshots -> cheap paid-LLM tokens.
+  -->
+  <style>
+    body { font-family: -apple-system, "Segoe UI", sans-serif; margin: 0; padding: 24px; color: #1c1c1e; }
+    h1 { font-size: 20px; margin: 0 0 16px; }
+    #search-form { display: flex; gap: 8px; margin-bottom: 12px; }
+    #search-input { padding: 8px 10px; font-size: 14px; width: 260px; border: 1px solid #c7c7cc; border-radius: 6px; }
+    #search-button { padding: 8px 16px; font-size: 14px; border: 0; border-radius: 6px; background: #0a84ff; color: #fff; cursor: pointer; }
+    #result-count { font-size: 13px; color: #6e6e73; margin: 0 0 16px; }
+    #product-list { display: grid; grid-template-columns: repeat(2, minmax(260px, 340px)); gap: 12px; }
+    .product-card { border: 1px solid #d1d1d6; border-radius: 8px; padding: 14px 16px; background: #fff; }
+    .product-card.hidden-card { display: none; }
+    .product-name { font-size: 15px; font-weight: 600; margin: 0 0 6px; }
+    .product-price { font-size: 14px; color: #30a46c; margin: 0 0 4px; font-variant-numeric: tabular-nums; }
+    .product-category { font-size: 12px; color: #6e6e73; margin: 0; text-transform: uppercase; letter-spacing: 0.04em; }
+    /* Tall footer keeps the window scrollable so the demo can record a scroll. */
+    #footer-spacer { height: 900px; }
+    footer { font-size: 12px; color: #8e8e93; border-top: 1px solid #e5e5ea; padding-top: 12px; }
+  </style>
+</head>
+<body>
+  <h1>Fixture Shop</h1>
+  <form id="search-form" action="#" method="get">
+    <input id="search-input" name="q" type="search" placeholder="Search products" autocomplete="off" />
+    <button id="search-button" type="submit">Search</button>
+  </form>
+  <p id="result-count" aria-live="polite"></p>
+
+  <section id="product-list" aria-label="Products">
+    <article class="product-card" data-name="iPhone 15 Pro" data-category="Phones">
+      <h2 class="product-name">iPhone 15 Pro</h2>
+      <p class="product-price">$999.00</p>
+      <p class="product-category">Phones</p>
+    </article>
+    <article class="product-card" data-name="iPhone 15" data-category="Phones">
+      <h2 class="product-name">iPhone 15</h2>
+      <p class="product-price">$799.00</p>
+      <p class="product-category">Phones</p>
+    </article>
+    <article class="product-card" data-name="Galaxy S24" data-category="Phones">
+      <h2 class="product-name">Galaxy S24</h2>
+      <p class="product-price">$859.00</p>
+      <p class="product-category">Phones</p>
+    </article>
+    <article class="product-card" data-name="Pixel 8" data-category="Phones">
+      <h2 class="product-name">Pixel 8</h2>
+      <p class="product-price">$699.00</p>
+      <p class="product-category">Phones</p>
+    </article>
+    <article class="product-card" data-name="MacBook Air 13" data-category="Laptops">
+      <h2 class="product-name">MacBook Air 13</h2>
+      <p class="product-price">$1,049.00</p>
+      <p class="product-category">Laptops</p>
+    </article>
+    <article class="product-card" data-name="iPad Air 11" data-category="Tablets">
+      <h2 class="product-name">iPad Air 11</h2>
+      <p class="product-price">$749.00</p>
+      <p class="product-category">Tablets</p>
+    </article>
+    <article class="product-card" data-name="AirPods Pro" data-category="Audio">
+      <h2 class="product-name">AirPods Pro</h2>
+      <p class="product-price">$249.00</p>
+      <p class="product-category">Audio</p>
+    </article>
+    <article class="product-card" data-name="Apple Watch SE" data-category="Wearables">
+      <h2 class="product-name">Apple Watch SE</h2>
+      <p class="product-price">$279.00</p>
+      <p class="product-category">Wearables</p>
+    </article>
+  </section>
+
+  <div id="footer-spacer" aria-hidden="true"></div>
+  <footer>Fixture Shop — local test data, no real products.</footer>
+
+  <script>
+    (function () {
+      var form = document.getElementById('search-form');
+      var input = document.getElementById('search-input');
+      var count = document.getElementById('result-count');
+      var cards = Array.prototype.slice.call(document.querySelectorAll('.product-card'));
+
+      function applyFilter(query) {
+        var needle = (query || '').trim().toLowerCase();
+        var visible = 0;
+        cards.forEach(function (card) {
+          var haystack = (card.getAttribute('data-name') + ' ' + card.getAttribute('data-category')).toLowerCase();
+          var show = needle === '' || haystack.indexOf(needle) !== -1;
+          card.classList.toggle('hidden-card', !show);
+          if (show) visible += 1;
+        });
+        count.textContent = 'Showing ' + visible + ' of ' + cards.length + ' products';
+      }
+
+      form.addEventListener('submit', function (event) {
+        event.preventDefault();
+        applyFilter(input.value);
+      });
+
+      applyFilter('');
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,70 @@
+id: network-evaluate-parallel
+version: 1.0.0
+name: 网络请求捕获、自定义脚本与并行执行
+domain: api-demo.example.com
+enabled: true
+steps:
+  - action: captureRequest
+    name: productApi
+    urlPattern: "**/api/products/*"
+    capture: response
+    limit: 10
+
+  - action: navigate
+    url: "https://api-demo.example.com/products"
+
+  - action: waitForNetworkIdle
+    idleTime: 500
+    timeout: 15000
+
+  - id: extract-from-script-tag
+    action: extractJson
+    name: initialState
+    target: { selector: "script#__INITIAL_STATE__" }
+    path: "$.products.list"
+
+  - id: custom-evaluation
+    action: evaluate
+    name: computedData
+    script: |
+      const data = window.__INITIAL_STATE__ || {};
+      return {
+        total: data.products?.total || 0,
+        categories: Array.from(new Set(data.products?.list?.map(p => p.category)))
+      };
+
+  - id: parallel-scrape-sections
+    action: parallel
+    maxConcurrency: 3
+    failFast: false
+    steps:
+      - action: extract
+        name: sectionA
+        target: { selector: ".section-a .card" }
+        multiple: true
+        fields:
+          title: { type: text, selector: ".title" }
+
+      - action: extract
+        name: sectionB
+        target: { selector: ".section-b .card" }
+        multiple: true
+        fields:
+          title: { type: text, selector: ".title" }
+
+      - action: extract
+        name: sectionC
+        target: { selector: ".section-c .card" }
+        multiple: true
+        fields:
+          title: { type: text, selector: ".title" }
+
+  - action: sendResult
+    payload:
+      apiResponses: "{{captured.productApi}}"
+      initialState: "{{extracted.initialState}}"
+      computed: "{{evaluated.computedData}}"
+      sections:
+        a: "{{extracted.sectionA}}"
+        b: "{{extracted.sectionB}}"
+        c: "{{extracted.sectionC}}"

@@ -1,0 +1,13 @@
+页面信息：
+{{.Meta}}
+
+DOM 树：
+{{.DomTree}}
+
+操作事件：
+{{.Events}}
+
+DOM 元素快照：
+{{.Snapshots}}
+
+请分析以上录制行为，返回候选意图 JSON。

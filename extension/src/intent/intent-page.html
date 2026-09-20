@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>确认采集意图 - AegisCrawler</title>
+  <link rel="stylesheet" href="intent-page.css" />
+</head>
+<body>
+  <header>
+    <h1>确认采集意图</h1>
+    <div id="status">正在加载...</div>
+    <div id="job-progress" class="hidden">
+      <span id="job-progress-text"></span>
+      <progress id="job-progress-bar" value="0" max="1"></progress>
+    </div>
+  </header>
+
+  <main id="wizard">
+    <section id="step-intent" class="step hidden">
+      <h2>步骤 1：选择此次操作的目的</h2>
+      <p class="hint" id="intent-hint"></p>
+      <div id="candidates-list"></div>
+      <div class="custom-intent">
+        <label for="custom-description">或者输入你的目的：</label>
+        <textarea id="custom-description" rows="3" placeholder="例如：抓取每个商品的价格和库存"></textarea>
+        <div class="manual-actions">
+          <button id="manual-structured" type="button">手动填写结构化需求</button>
+          <button id="retry-requirement-job" type="button">重试候选生成</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="step-requirement" class="step hidden">
+      <h2>步骤 2：检查并规范化采集需求</h2>
+      <p class="hint">候选、编辑和自定义输入都会统一为以下结构。修改后需重新验证，再明确确认。</p>
+      <div class="requirement-editor">
+        <label>标题<input id="requirement-title" type="text" /></label>
+        <label>描述<textarea id="requirement-description" rows="3"></textarea></label>
+        <div class="requirement-grid">
+          <label>必填输入（JSON 数组）<textarea id="requirement-required-inputs" rows="8"></textarea></label>
+          <label>可选输入（JSON 数组）<textarea id="requirement-optional-inputs" rows="8"></textarea></label>
+          <label>输出字段（JSON 数组）<textarea id="requirement-output-fields" rows="10"></textarea></label>
+          <label>示例输出（JSON 对象）<textarea id="requirement-sample-output" rows="10"></textarea></label>
+        </div>
+      </div>
+    </section>
+
+    <section id="step-requirement-confirmed" class="step hidden">
+      <h2>采集需求已确认</h2>
+      <p id="requirement-confirmed-result"></p>
+      <p class="hint">已确认需求将用于生成临时 DSL，并在当前 Chrome 配置中打开新标签页进行完整回放。</p>
+      <label>浏览器配置引用
+        <input id="browser-profile-id" type="text" value="current-chrome-profile" />
+      </label>
+      <p class="hint">这里只保存配置名称；Cookie、会话和凭证始终留在浏览器配置中。</p>
+
+      <div id="correct-rule-section-gen" class="correct-rule-section hidden">
+        <h3>人工修正规则</h3>
+        <p class="hint">生成失败时可在下方编辑完整规则（JSON）并直接提交人工修正。必须保留录制派生的 id、version、entry、domain；服务端会执行与模型输出相同的安全校验，修正后进入完整回放。</p>
+        <textarea id="correct-rule-editor-gen" rows="14" spellcheck="false" placeholder="规则 JSON"></textarea>
+        <div class="wizard-actions">
+          <button type="button" id="correct-rule-submit-gen" class="primary">提交人工修正</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="step-preview" class="step hidden">
+      <h2>步骤 3：预览临时 DSL</h2>
+      <div id="replay-inputs" class="replay-inputs hidden"></div>
+      <div class="preview-layout">
+        <div id="steps-list"></div>
+        <pre id="yaml-preview"><code></code></pre>
+      </div>
+    </section>
+
+    <section id="step-replay" class="step hidden">
+      <h2>步骤 4：完整浏览器回放与修复</h2>
+      <p class="hint">系统将在新标签页真实执行生成的 DSL，下方显示执行日志与提取结果。</p>
+      <div id="replay-stage"></div>
+
+      <div id="correct-rule-section-replay" class="correct-rule-section hidden">
+        <h3>人工修正规则</h3>
+        <p class="hint">生成失败时可在下方编辑完整规则（JSON）并直接提交人工修正。必须保留录制派生的 id、version、entry、domain；服务端会执行与模型输出相同的安全校验，修正后进入完整回放。</p>
+        <textarea id="correct-rule-editor-replay" rows="14" spellcheck="false" placeholder="规则 JSON"></textarea>
+        <div class="wizard-actions">
+          <button type="button" id="correct-rule-submit-replay" class="primary">提交人工修正</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="step-confirm" class="step hidden">
+      <h2>步骤 4：确认每一步操作</h2>
+      <p class="hint">请逐条确认以下 DSL 步骤与你的实际操作一致。</p>
+      <div id="confirm-list"></div>
+      <label class="checkbox-label">
+        <input id="confirm-all" type="checkbox" />
+        全部确认
+      </label>
+    </section>
+
+    <section id="step-save" class="step hidden">
+      <h2>步骤 5：保存结果</h2>
+      <p id="save-result"></p>
+      <a id="admin-link" class="hidden" href="#" target="_blank">在 Admin UI 中查看</a>
+    </section>
+  </main>
+
+  <footer id="wizard-actions" class="actions-bar">
+    <button id="action-tertiary" class="tertiary" type="button"></button>
+    <button id="action-secondary" class="secondary" type="button"></button>
+    <button id="action-primary" class="primary" type="button"></button>
+  </footer>
+
+  <script src="intent-page.js"></script>
+</body>
+</html>

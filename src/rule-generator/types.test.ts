@@ -1,0 +1,201 @@
+/// <reference types="vitest/globals" />
+import { describe, it, expect } from 'vitest';
+import Ajv from 'ajv';
+import addFormats from 'ajv-formats';
+import recordingSchema from './schema/page-agent-recording.schema.json';
+
+describe('PageAgentRecording schema', () => {
+  it('validates a minimal recording', () => {
+    const ajv = new Ajv();
+    addFormats(ajv);
+    const validate = ajv.compile(recordingSchema);
+    const valid = validate({
+      version: '1.0.0',
+      meta: {
+        startUrl: 'https://example.com/',
+        title: 'Test',
+        recordedAt: '2026-07-04T10:00:00Z',
+        domain: 'example.com',
+      },
+      events: [{ type: 'navigate', url: 'https://example.com/', timestamp: 1 }],
+      snapshots: [
+        {
+          timestamp: 1,
+          url: 'https://example.com/',
+          selectorMap: {
+            '1': { index: 1, tagName: 'button', selector: '#btn', boundingRect: { x: 0, y: 0, width: 10, height: 10 } },
+          },
+        },
+      ],
+    });
+    expect(valid).toBe(true);
+  });
+
+  it('rejects recording without required meta', () => {
+    const ajv = new Ajv();
+    addFormats(ajv);
+    const validate = ajv.compile(recordingSchema);
+    const valid = validate({
+      version: '1.0.0',
+      meta: { startUrl: 'https://example.com/' },
+      events: [],
+      snapshots: [],
+    });
+    expect(valid).toBe(false);
+  });
+
+  it('validates a completed semantic recording v2 contract', () => {
+    const ajv = new Ajv();
+    addFormats(ajv);
+    const validate = ajv.compile(recordingSchema);
+    const valid = validate({
+      version: '2.0.0',
+      meta: {
+        startUrl: 'https://example.com/',
+        title: 'Semantic recording',
+        recordedAt: '2026-07-16T08:00:00Z',
+        endedAt: '2026-07-16T08:01:00Z',
+        domain: 'example.com',
+        semanticDomVersion: '1',
+        sanitizationVersion: 'extension-v2',
+      },
+      limits: { maxActions: 500, maxDurationMs: 7200000, maxBytes: 26214400, warningThreshold: 0.8 },
+      warnings: [],
+      termination: { reason: 'user', message: 'done', timestamp: 2, complete: true },
+      events: [{ type: 'click', index: 1, timestamp: 1 }],
+      snapshots: [
+        {
+          timestamp: 0,
+          url: 'https://example.com/',
+          phase: 'initial',
+          sequence: 0,
+          selectorMap: {},
+          domTree: {
+            type: 'element',
+            tagName: 'html',
+            children: [{
+              type: 'element',
+              tagName: 'section',
+              rendered: false,
+              sanitization: {
+                markupAltered: true,
+                contentOmitted: true,
+                alteredAttributes: ['class'],
+              },
+            }],
+          },
+          capture: { status: 'complete', nodeCount: 2, redactionCount: 1, removedNodeCount: 0, frames: [] },
+        },
+        {
+          timestamp: 2,
+          url: 'https://example.com/',
+          phase: 'final',
+          sequence: 1,
+          selectorMap: {},
+          domTree: { type: 'element', tagName: 'html' },
+          capture: { status: 'complete', nodeCount: 2, redactionCount: 1, removedNodeCount: 0, frames: [] },
+        },
+      ],
+    });
+    expect(validate.errors).toBeNull();
+    expect(valid).toBe(true);
+  });
+
+  it('rejects incomplete v2 recordings without limits, termination, and two snapshots', () => {
+    const ajv = new Ajv();
+    addFormats(ajv);
+    const validate = ajv.compile(recordingSchema);
+    expect(validate({
+      version: '2.0.0',
+      meta: {
+        startUrl: 'https://example.com/',
+        title: 'Incomplete',
+        recordedAt: '2026-07-16T08:00:00Z',
+        domain: 'example.com',
+      },
+      events: [],
+      snapshots: [],
+    })).toBe(false);
+  });
+
+  it('accepts submitForm events and rejects v2 snapshots without semantic DOM data', () => {
+    const ajv = new Ajv();
+    addFormats(ajv);
+    const validate = ajv.compile(recordingSchema);
+    expect(validate({
+      version: '1.0.0',
+      meta: {
+        startUrl: 'https://example.com/',
+        title: 'Form',
+        recordedAt: '2026-07-16T08:00:00Z',
+        domain: 'example.com',
+      },
+      events: [{ type: 'submitForm', index: 1, submitterIndex: 2, timestamp: 1 }],
+      snapshots: [],
+    })).toBe(true);
+
+    expect(validate({
+      version: '2.0.0',
+      meta: {
+        startUrl: 'https://example.com/',
+        title: 'Missing DOM',
+        recordedAt: '2026-07-16T08:00:00Z',
+        endedAt: '2026-07-16T08:01:00Z',
+        domain: 'example.com',
+        semanticDomVersion: '1',
+        sanitizationVersion: 'extension-v1',
+      },
+      limits: { maxActions: 500, maxDurationMs: 7200000, maxBytes: 26214400, warningThreshold: 0.8 },
+      warnings: [],
+      termination: { reason: 'user', message: 'done', timestamp: 2, complete: true },
+      events: [],
+      snapshots: [
+        { timestamp: 1, url: 'https://example.com/', selectorMap: {}, phase: 'initial', sequence: 0 },
+        { timestamp: 2, url: 'https://example.com/', selectorMap: {}, phase: 'final', sequence: 1 },
+      ],
+    })).toBe(false);
+  });
+
+  it('rejects malformed or unbounded DOM sanitization provenance', () => {
+    const ajv = new Ajv();
+    addFormats(ajv);
+    const validate = ajv.compile(recordingSchema);
+    const recordingWith = (sanitization: unknown) => ({
+      version: '1.0.0',
+      meta: {
+        startUrl: 'https://example.com/',
+        title: 'Malformed provenance',
+        recordedAt: '2026-07-16T08:00:00Z',
+        domain: 'example.com',
+      },
+      events: [],
+      snapshots: [{
+        timestamp: 1,
+        url: 'https://example.com/',
+        selectorMap: {},
+        domTree: { type: 'element', tagName: 'main', sanitization },
+      }],
+    });
+
+    for (const sanitization of [
+      {},
+      { markupAltered: false },
+      { alteredAttributes: [] },
+      { alteredAttributes: Array.from({ length: 65 }, (_, index) => `data-${index}`) },
+      { markupAltered: true, unknown: true },
+    ]) {
+      expect(validate(recordingWith(sanitization)), JSON.stringify(sanitization)).toBe(false);
+    }
+
+    const textRendered = recordingWith({ markupAltered: true });
+    Object.assign(textRendered.snapshots[0], {
+      domTree: {
+        type: 'text',
+        text: 'hidden text',
+        rendered: false,
+        sanitization: { markupAltered: true },
+      },
+    });
+    expect(validate(textRendered)).toBe(false);
+  });
+});

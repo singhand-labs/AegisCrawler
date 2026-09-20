@@ -1,0 +1,90 @@
+id: advanced-interactions-demo
+version: 1.0.0
+name: 高级交互：拖拽、滑动、悬停菜单、上传、熔断、配额
+domain: advanced-demo.example.com
+enabled: true
+timeout: 120000
+screenshotOnError: true
+selectors:
+  draggable: { selector: ".draggable-item" }
+  dropZone: { selector: ".drop-zone" }
+  slider: { selector: ".slider" }
+  menuTrigger: { selector: ".menu-trigger" }
+  menuItem: { selector: ".menu-item[data-action=delete]" }
+  fileInput: { selector: "input[type=file]" }
+  submitBtn: { selector: "#submit" }
+  result: { selector: ".result" }
+steps:
+  - action: checkQuota
+    type: requestsPerMinute
+    limit: 60
+    onExceeded: fail
+
+  - action: circuitBreaker
+    name: advanced-demo
+    failureThreshold: 5
+    windowMs: 60000
+    cooldownMs: 300000
+
+  - action: moveMouse
+    to: { selector: ".page-header" }
+    duration: [300, 800]
+    path: bezier
+
+  - action: dragAndDrop
+    source: { $ref: "selectors.draggable" }
+    target: { $ref: "selectors.dropZone" }
+    duration: [800, 1500]
+    humanize:
+      wobble: 3
+
+  - action: slide
+    target: { $ref: "selectors.slider" }
+    direction: right
+    distance: 260
+    duration: [1000, 1800]
+
+  - action: hoverClick
+    hoverTarget: { $ref: "selectors.menuTrigger" }
+    clickTarget: { $ref: "selectors.menuItem" }
+    menuAppearTimeout: 1000
+    maxDistance: 120
+    humanize:
+      preDelay: [200, 400]
+
+  - action: uploadFile
+    target: { $ref: "selectors.fileInput" }
+    files:
+      - "mock file content line 1"
+      - "mock file content line 2"
+
+  - action: pressAndHold
+    target: { $ref: "selectors.submitBtn" }
+    duration: [1500, 2500]
+
+  - action: click
+    target: { $ref: "selectors.submitBtn" }
+    humanize:
+      moveMouse: true
+      randomOffset: 3
+      preDelay: [100, 300]
+      postDelay: [200, 500]
+
+  - action: waitFor
+    target: { $ref: "selectors.result" }
+    timeout: 15000
+
+  - action: extract
+    name: resultData
+    target: { $ref: "selectors.result" }
+    fields:
+      status: { type: text, selector: ".status" }
+      message: { type: text, selector: ".message" }
+
+  - action: sendResult
+    payload:
+      site: advanced-demo.example.com
+      result: "{{extracted.resultData}}"
+
+  - action: updateStatus
+    status: done

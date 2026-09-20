@@ -1,0 +1,6 @@
+*.db
+*.exe
+*.test
+/tmp/
+/coverage/
+/vendor/

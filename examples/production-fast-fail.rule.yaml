@@ -1,0 +1,208 @@
+id: production-fast-fail-demo
+version: 1.0.0
+name: 生产级采集：快速失败、部分上报、熔断、清理
+domain: prod-demo.example.com
+enabled: true
+timeout: 120000
+maxRetries: 2
+screenshotOnError: true
+output:
+  type: object
+  required: [site, taskId, items]
+  properties:
+    site: { type: string }
+    taskId: { type: string }
+    items:
+      type: array
+      items:
+        type: object
+        required: [sku, name, price]
+        properties:
+          sku: { type: string }
+          name: { type: string }
+          price: { type: number, minimum: 0 }
+          inStock: { type: boolean }
+sendPolicy:
+  batchSize: 30
+  flushInterval: 15000
+  sendOnFailure: true
+selectors:
+  loginIndicator: { selector: ".user-profile" }
+  productList: { selector: ".product-list" }
+  productCard: { selector: ".product-card" }
+  price: { selector: ".price" }
+  nextPage: { selector: ".pagination .next" }
+tags:
+  env: production
+  team: data-platform
+  priority: p1
+owner: data-team@example.com
+hooks:
+  beforeAll:
+    - action: checkQuota
+      type: requestsPerMinute
+      limit: 60
+      onExceeded: fail
+    - action: setTag
+      tags:
+        phase: preflight
+      scope: task
+
+  onError:
+    - action: saveSnapshot
+      name: error-snapshot
+      type: screenshot
+    - action: flushResults
+      awaitAck: true
+      timeout: 5000
+    - action: sendLog
+      level: error
+      message: "任务执行失败，已 flush 部分数据"
+      extra:
+        taskId: "{{taskId}}"
+        lastStep: "{{lastStepId}}"
+        error: "{{lastError}}"
+
+  cleanup:
+    - action: navigate
+      url: "about:blank"
+    - action: sendLog
+      level: info
+      message: "资源清理完成"
+
+steps:
+  - id: auth-check
+    action: if
+    condition:
+      type: elementNotExists
+      target: { $ref: "selectors.loginIndicator" }
+    then:
+      - action: sendLog
+        level: error
+        message: "未检测到登录态，快速失败"
+      - action: abort
+        reason: "AuthenticationError"
+        flushBeforeAbort: true
+
+  - id: open-list-page
+    action: navigate
+    url: "https://prod-demo.example.com/products?category={{category}}"
+    waitUntil: networkidle
+    hardTimeout: 30000
+    critical: true
+
+  - id: wait-list
+    action: waitFor
+    target: { $ref: "selectors.productList" }
+    timeout: 20000
+    critical: true
+
+  - id: page-loop
+    action: loop
+    type: fixedCount
+    count: "{{maxPages|default:5}}"
+    as: pageIndex
+    maxIterations: 10
+    steps:
+      - id: extract-page
+        action: extract
+        name: pageItems
+        target: { $ref: "selectors.productCard" }
+        multiple: true
+        checkpoint: true
+        onEmpty: fail
+        fields:
+          sku:
+            type: attr
+            selector: "[data-sku]"
+            attr: data-sku
+            required: true
+          name:
+            type: text
+            selector: ".product-name"
+            trim: true
+            required: true
+          price:
+            type: number
+            selector: { $ref: "selectors.price" }
+            regex: '\\d+\\.?\\d*'
+            default: 0
+          inStock:
+            type: exists
+            selector: ".in-stock-badge"
+        validate:
+          type: array
+          minItems: 1
+
+      - id: validate-page
+        action: validateData
+        from: pageItems
+        schema:
+          type: array
+          items:
+            type: object
+            required: [sku, name]
+        onInvalid: fail
+
+      - id: flush-page
+        action: flushResults
+        awaitAck: false
+
+      - id: heartbeat
+        action: heartbeat
+        payload:
+          page: "{{pageIndex}}"
+          count: "{{pageItems.length}}"
+
+      - id: log-metric
+        action: logMetric
+        name: extracted_items_per_page
+        value: "{{pageItems.length}}"
+        tags:
+          site: prod-demo.example.com
+
+      - id: next-page-if-exists
+        action: if
+        condition:
+          type: elementExists
+          target: { $ref: "selectors.nextPage" }
+        then:
+          - action: click
+            target: { $ref: "selectors.nextPage" }
+            humanize:
+              preDelay: [800, 1500]
+          - action: waitForTimeout
+            ms: [1500, 2500]
+
+  - id: dedup-final
+    action: deduplicate
+    from: collectedItems
+    name: uniqueItems
+    keys: [sku]
+    keep: first
+
+  - id: validate-final
+    action: validateData
+    from: uniqueItems
+    schema:
+      type: array
+      minItems: 1
+      items:
+        type: object
+        required: [sku, name, price]
+        properties:
+          sku: { type: string }
+          name: { type: string, minLength: 1 }
+          price: { type: number, minimum: 0 }
+    onInvalid: fail
+
+  - id: send-final
+    action: sendResult
+    payload:
+      site: prod-demo.example.com
+      taskId: "{{taskId}}"
+      items: "{{uniqueItems}}"
+
+  - id: mark-done
+    action: updateStatus
+    status: done
