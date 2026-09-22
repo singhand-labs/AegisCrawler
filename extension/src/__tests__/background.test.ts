@@ -139,6 +139,10 @@ function createChromeMock() {
       scripting: {
         executeScript: vi.fn(async () => []),
       },
+      action: {
+        setBadgeText: vi.fn(async () => undefined),
+        setBadgeBackgroundColor: vi.fn(async () => undefined),
+      },
       downloads: {
         download: vi.fn(async () => 7),
       },
@@ -325,6 +329,16 @@ describe('background service worker', () => {
       expect(response).toEqual({ state: 'idle' });
     });
 
+    it('badges the toolbar while a recording is active and clears it on stop', async () => {
+      const badge = chromeMock.mock.action;
+      if (!badge) throw new Error('action mock missing');
+      await sendMessage({ action: 'START_RECORDING' });
+      expect(badge.setBadgeText).toHaveBeenCalledWith({ text: 'REC' });
+      expect(badge.setBadgeBackgroundColor).toHaveBeenCalledWith({ color: '#dc2626' });
+      await sendMessage({ action: 'STOP_RECORDING' });
+      expect(badge.setBadgeText).toHaveBeenLastCalledWith({ text: '' });
+    });
+
     it('restores an active recording session from session storage', async () => {
       chromeMock.sessionStorage.oc_recording_session = {
         tabId: 42,
@@ -333,7 +347,7 @@ describe('background service worker', () => {
         statusMessage: 'restored after restart',
       };
 
-      await expect(sendMessage({ action: 'GET_STATE' })).resolves.toEqual({
+      await expect(sendMessage({ action: 'GET_STATE' })).resolves.toMatchObject({
         state: 'recording',
         statusMessage: 'restored after restart',
       });
@@ -602,7 +616,7 @@ describe('background service worker', () => {
         success: false,
         error: '录制协议不匹配：期望 2.0.0，收到 1.0.0',
       });
-      await expect(sendMessage({ action: 'GET_STATE' })).resolves.toEqual({ state: 'recording' });
+      await expect(sendMessage({ action: 'GET_STATE' })).resolves.toMatchObject({ state: 'recording' });
 
       chromeMock.mock.tabs.sendMessage.mockImplementation(async (_tabId: number, message: unknown) => {
         const action = (message as { action?: string }).action;
@@ -615,7 +629,7 @@ describe('background service worker', () => {
         success: false,
         error: 'checkpoint unavailable',
       });
-      await expect(sendMessage({ action: 'GET_STATE' })).resolves.toEqual({ state: 'recording' });
+      await expect(sendMessage({ action: 'GET_STATE' })).resolves.toMatchObject({ state: 'recording' });
     });
 
     it('keeps requested legacy options when capabilities are unavailable or disabled', async () => {
@@ -799,7 +813,7 @@ describe('background service worker', () => {
         success: false,
         error: '录制协议不匹配：期望 2.0.0，收到 1.0.0',
       });
-      await expect(sendMessage({ action: 'GET_STATE' })).resolves.toEqual({ state: 'recording' });
+      await expect(sendMessage({ action: 'GET_STATE' })).resolves.toMatchObject({ state: 'recording' });
     });
 
     it('persists a completed v2 recording before returning from stop', async () => {

@@ -120,6 +120,11 @@ interface ChromeRuntime {
   };
 }
 
+interface ChromeAction {
+  setBadgeText(details: { text: string; tabId?: number }): Promise<void>;
+  setBadgeBackgroundColor(details: { color: string | [number, number, number, number]; tabId?: number }): Promise<void>;
+}
+
 interface Chrome {
   storage: ChromeStorage;
   tabs: ChromeTabs;
@@ -128,6 +133,7 @@ interface Chrome {
   runtime: ChromeRuntime;
   webNavigation: ChromeWebNavigation;
   alarms: ChromeAlarms;
+  action?: ChromeAction;
 }
 
 declare const chrome: Chrome;

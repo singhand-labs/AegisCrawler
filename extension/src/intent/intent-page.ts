@@ -121,27 +121,46 @@ export function withInFlight<T>(op: InFlightOp, fn: () => Promise<T>): Promise<T
   if (state.inFlight.has(op)) return Promise.resolve(undefined);
   state.inFlight.add(op);
   renderActions();
+  renderLoadingSpinner();
   return fn().then(
     (result) => {
       state.inFlight.delete(op);
       renderActions();
+      renderLoadingSpinner();
       return result;
     },
     (err) => {
       state.inFlight.delete(op);
       renderActions();
+      renderLoadingSpinner();
       throw err;
     },
   );
 }
 
-export function setStatus(message: string, type: 'info' | 'error' | 'success' = 'info'): void {
+export function setStatus(message: string, type: 'info' | 'error' | 'success' | 'warning' = 'info'): void {
   const el = getEl<HTMLDivElement>('status');
   if (el) {
     el.textContent = message;
     el.className = type;
   }
   hideJobProgress();
+}
+
+/** Wrap a raw server/thrown error for display: friendly Chinese prefix plus a
+ *  short secondary traceId line when the server embedded one, so users see
+ *  context instead of a bare English exception. The original string stays in
+ *  the message for supportability. */
+export function formatServerError(prefix: string, err: string | null | undefined): string {
+  const raw = (err ?? '').trim() || '未知错误';
+  const traceMatch = raw.match(/\(traceId:\s*([0-9a-f-]+)\)/i);
+  if (traceMatch) {
+    const body = raw.replace(traceMatch[0], '').trim();
+    return traceMatch[1]
+      ? `${prefix}${body}（追踪 ID：${traceMatch[1]}）`
+      : `${prefix}${body}`;
+  }
+  return `${prefix}${raw}`;
 }
 
 function hideJobProgress(): void {
@@ -169,6 +188,39 @@ export function renderJobProgress(progress: LLMJobProgress): void {
   }
 }
 
+// Maps a wizard step onto the 5-step progress indicator. The two
+// requirement sub-steps both highlight stage 2; legacy confirm mirrors replay.
+const STEP_TO_STEPPER: Record<string, string> = {
+  intent: 'intent',
+  requirement: 'requirement',
+  'requirement-confirmed': 'requirement',
+  preview: 'preview',
+  replay: 'replay',
+  confirm: 'replay',
+  save: 'save',
+};
+
+const STEP_ORDER = ['intent', 'requirement', 'preview', 'replay', 'save'];
+
+function renderStepper(): void {
+  const stepper = getEl<HTMLElement>('wizard-stepper');
+  if (!stepper) return;
+  const current = STEP_TO_STEPPER[state.step] ?? 'intent';
+  const currentIndex = STEP_ORDER.indexOf(current);
+  stepper.querySelectorAll<HTMLElement>('.stepper-item').forEach((item) => {
+    const step = item.getAttribute('data-step') ?? '';
+    item.classList.toggle('current', step === current);
+    item.classList.toggle('done', STEP_ORDER.indexOf(step) < currentIndex);
+  });
+}
+
+function renderLoadingSpinner(): void {
+  const spinner = getEl<HTMLElement>('wizard-loading');
+  if (!spinner) return;
+  const busy = state.loading || state.inFlight.size > 0;
+  spinner.classList.toggle('hidden', !busy);
+}
+
 export function showStep(step: WizardState['step']): void {
   state.step = step;
   document.querySelectorAll('.step').forEach((el) => el.classList.add('hidden'));
@@ -178,6 +230,7 @@ export function showStep(step: WizardState['step']): void {
     renderIntentHint();
     renderPageMarks();
   }
+  renderStepper();
   renderActions();
 }
 
@@ -327,6 +380,7 @@ function renderPageMarks(): void {
     const summary = document.createElement('div');
     const role = document.createElement('span');
     role.className = 'page-mark-role';
+    role.dataset.role = mark.role;
     role.textContent = markRoleLabels[mark.role] ?? mark.role;
     const selector = document.createElement('code');
     selector.className = 'page-mark-selector';
@@ -337,6 +391,12 @@ function renderPageMarks(): void {
     note.maxLength = 200;
     note.value = mark.note;
     note.setAttribute('aria-label', `${role.textContent}备注`);
+    note.title = '修改后记得点击“保存”';
+    // Dirty dot: mark the textarea visually until the user saves the note.
+    note.addEventListener('input', () => {
+      note.classList.add('dirty');
+      save.classList.toggle('mark-save-pending', note.value.trim() !== mark.note.trim());
+    });
 
     const actions = document.createElement('div');
     actions.className = 'page-mark-actions';
@@ -349,11 +409,14 @@ function renderPageMarks(): void {
         setStatus('标注备注不能超过 200 字符', 'error');
         return;
       }
+      note.classList.remove('dirty');
+      save.classList.remove('mark-save-pending');
       void persistPageMarks(state.pageMarks.map((item, itemIndex) => itemIndex === index ? { ...item, note: nextNote } : item));
     });
     const remove = document.createElement('button');
     remove.type = 'button';
     remove.textContent = '删除';
+    remove.className = 'mark-delete';
     remove.addEventListener('click', () => {
       void persistPageMarks(state.pageMarks.filter((_, itemIndex) => itemIndex !== index));
     });
@@ -459,7 +522,7 @@ export function requestRequirementCandidates(): Promise<void> {
       applyRequirementWorkflow(workflow);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      setStatus(`候选需求生成失败：${message}`, 'error');
+      setStatus(formatServerError('候选需求生成失败：', message), 'error');
       state.error = message;
     } finally {
       state.loading = false;
@@ -1107,10 +1170,19 @@ export function renderPreview(): void {
         const action = String(s.action || '');
         const targetSelector =
           (s.target as Record<string, unknown> | undefined)?.selector || s.url || '';
+        // Semantic coloring: extraction steps green, navigation blue, control
+        // flow amber — mirrors the replay log palette.
+        const semantic = /extract/i.test(action)
+          ? 'is-extract'
+          : /navigate|click|type|scroll|press/i.test(action)
+            ? 'is-nav'
+            : /loop|if|wait/i.test(action)
+              ? 'is-control'
+              : '';
         return `
           <div class="step-item">
             <span class="step-num">${i + 1}</span>
-            <span class="step-action">${escapeHtml(action)}</span>
+            <span class="step-action ${semantic}">${escapeHtml(action)}</span>
             <span class="step-target" title="${escapeHtml(String(targetSelector))}">${escapeHtml(String(targetSelector))}</span>
           </div>
         `;
@@ -1119,6 +1191,15 @@ export function renderPreview(): void {
   }
   if (yamlPreview) {
     yamlPreview.textContent = state.yaml;
+    yamlPreview.title = '';
+    // Double-click anywhere on the YAML toggles collapse for long rules.
+    yamlPreview.onclick = null;
+    yamlPreview.ondblclick = () => {
+      yamlPreview.classList.toggle('collapsed');
+      yamlPreview.title = yamlPreview.classList.contains('collapsed')
+        ? '双击展开完整 YAML'
+        : '双击折叠 YAML';
+    };
   }
 }
 
@@ -1787,7 +1868,12 @@ export function renderReplayMonitor(): void {
     logsHtml += `<div class="replay-error">错误：${escapeHtml(state.replayError)}</div>`;
   }
 
-  stage.innerHTML = `<div class="replay-status">${statusText}</div><div class="replay-logs">${logsHtml}</div>`;
+  stage.innerHTML = `<div class="replay-status" data-state="${state.replayStatus}">${statusText}</div><div class="replay-logs">${logsHtml}</div>`;
+  // Auto-scroll the monitor so live replay logs stay visible without manual
+  // scrolling; only while a replay is actually in flight.
+  if (state.replayStatus === 'running') {
+    stage.scrollTop = stage.scrollHeight;
+  }
 }
 
 export function updateReplayConfirmButton(): void {
@@ -1980,7 +2066,21 @@ function configureButton(
   if (!btn) return;
   btn.classList.toggle('hidden', !config.visible);
   if (config.visible) {
-    btn.textContent = config.label;
+    const busy = state.inFlight.size > 0;
+    // Replace the label with a mini spinner + label while any wizard op is in
+    // flight so the wait is visible on the button itself.
+    if (busy && !btn.querySelector('.spinner')) {
+      const spinner = document.createElement('span');
+      spinner.className = 'spinner';
+      btn.prepend(spinner);
+    } else if (!busy) {
+      btn.querySelector('.spinner')?.remove();
+    }
+    if (btn.lastChild?.nodeType !== Node.TEXT_NODE) {
+      btn.appendChild(document.createTextNode(config.label));
+    } else if (btn.lastChild) {
+      btn.lastChild.textContent = config.label;
+    }
     btn.classList.toggle('primary', config.primary ?? false);
     btn.disabled = (config.disabled ?? false) || state.inFlight.size > 0;
   }
@@ -2091,33 +2191,33 @@ function handlePrimaryAction(): void {
       if (state.workflowV2) {
         const custom = getEl<HTMLTextAreaElement>('custom-description')?.value.trim() ?? '';
         if (!state.candidatesRequested && custom.length === 0) {
-          requestRequirementCandidates().catch((err) => setStatus(String(err), 'error'));
+          requestRequirementCandidates().catch((err) => setStatus(formatServerError('操作失败：', err instanceof Error ? err.message : String(err)), 'error'));
         } else {
-          prepareRequirement().catch((err) => setStatus(String(err), 'error'));
+          prepareRequirement().catch((err) => setStatus(formatServerError('操作失败：', err instanceof Error ? err.message : String(err)), 'error'));
         }
       } else {
-        generateDSL().catch((err) => setStatus(String(err), 'error'));
+        generateDSL().catch((err) => setStatus(formatServerError('操作失败：', err instanceof Error ? err.message : String(err)), 'error'));
       }
       break;
     case 'requirement':
-      confirmRequirement().catch((err) => setStatus(String(err), 'error'));
+      confirmRequirement().catch((err) => setStatus(formatServerError('操作失败：', err instanceof Error ? err.message : String(err)), 'error'));
       break;
     case 'requirement-confirmed':
-      generateWorkflowDSL().catch((err) => setStatus(String(err), 'error'));
+      generateWorkflowDSL().catch((err) => setStatus(formatServerError('操作失败：', err instanceof Error ? err.message : String(err)), 'error'));
       break;
     case 'preview':
-      startReplay().catch((err) => setStatus(String(err), 'error'));
+      startReplay().catch((err) => setStatus(formatServerError('操作失败：', err instanceof Error ? err.message : String(err)), 'error'));
       break;
     case 'replay':
       if (state.workflowV2) {
-        confirmWorkflowRule().catch((err) => setStatus(String(err), 'error'));
+        confirmWorkflowRule().catch((err) => setStatus(formatServerError('操作失败：', err instanceof Error ? err.message : String(err)), 'error'));
       } else {
         renderConfirmList();
         showStep('confirm');
       }
       break;
     case 'confirm':
-      saveRule().catch((err) => setStatus(String(err), 'error'));
+      saveRule().catch((err) => setStatus(formatServerError('操作失败：', err instanceof Error ? err.message : String(err)), 'error'));
       break;
     case 'save':
       window.close();
@@ -2151,7 +2251,7 @@ function handleSecondaryAction(): void {
 
 function handleTertiaryAction(): void {
   if (state.step === 'replay') {
-    abortReplay().catch((err) => setStatus(String(err), 'error'));
+    abortReplay().catch((err) => setStatus(formatServerError('操作失败：', err instanceof Error ? err.message : String(err)), 'error'));
   }
 }
 
@@ -2183,10 +2283,18 @@ export function initWizard(): void {
       }
     }
   }, 1000);
-  window.addEventListener('beforeunload', () => {
+  window.addEventListener('beforeunload', (event) => {
     window.clearInterval(heartbeatInterval);
     keepAlivePort?.disconnect();
     keepAlivePort = null;
+    // Guard against losing an in-flight replay or LLM job by accidentally
+    // closing the tab. Server-side jobs are durable, but the replay browser
+    // tab is not — warn so the user closes deliberately.
+    if (state.replayStatus === 'running' || state.inFlight.size > 0) {
+      event.preventDefault();
+      // Chrome requires returnValue for the confirmation dialog to appear.
+      event.returnValue = '';
+    }
   });
 
   resumeDSLWorkflow()
@@ -2239,10 +2347,67 @@ export function initWizard(): void {
     'requirement-sample-output',
   ].forEach((id) => getEl<HTMLInputElement | HTMLTextAreaElement>(id)?.addEventListener('input', markRequirementDirty));
 
+  // Inline JSON validation on blur: flag malformed JSON immediately instead
+  // of waiting for the user to hit 验证并规范化.
+  for (const id of ['requirement-required-inputs', 'requirement-optional-inputs', 'requirement-output-fields', 'requirement-sample-output']) {
+    getEl<HTMLTextAreaElement>(id)?.addEventListener('blur', () => {
+      const el = getEl<HTMLTextAreaElement>(id);
+      if (!el) return;
+      const value = el.value.trim();
+      if (!value) {
+        el.classList.remove('invalid-json');
+        return;
+      }
+      try {
+        JSON.parse(value);
+        el.classList.remove('invalid-json');
+      } catch {
+        el.classList.add('invalid-json');
+      }
+    });
+  }
+
+  // Human-correction editors: a small toolbar with 格式化 (pretty-print) and
+  // 校验 (validate + report) so users are not staring at unvalidated JSON.
+  for (const scope of ['gen', 'replay'] as const) {
+    const editor = getEl<HTMLTextAreaElement>(`correct-rule-editor-${scope}`);
+    const section = getEl<HTMLDivElement>(`correct-rule-section-${scope}`);
+    if (!editor || !section) continue;
+    const toolbar = document.createElement('div');
+    toolbar.className = 'correct-rule-toolbar';
+    const formatBtn = document.createElement('button');
+    formatBtn.type = 'button';
+    formatBtn.textContent = '格式化 JSON';
+    formatBtn.addEventListener('click', () => {
+      try {
+        editor.value = JSON.stringify(JSON.parse(editor.value), null, 2);
+        editor.classList.remove('invalid-json');
+      } catch {
+        editor.classList.add('invalid-json');
+        setStatus('规则 JSON 无法解析，请检查语法', 'error');
+      }
+    });
+    const validateBtn = document.createElement('button');
+    validateBtn.type = 'button';
+    validateBtn.textContent = '校验 JSON';
+    validateBtn.addEventListener('click', () => {
+      try {
+        JSON.parse(editor.value);
+        editor.classList.remove('invalid-json');
+        setStatus('规则 JSON 语法正确', 'success');
+      } catch (err) {
+        editor.classList.add('invalid-json');
+        setStatus(`规则 JSON 无法解析：${err instanceof Error ? err.message : String(err)}`, 'error');
+      }
+    });
+    toolbar.append(formatBtn, validateBtn);
+    editor.before(toolbar);
+  }
+
   getEl<HTMLButtonElement>('manual-structured')?.addEventListener('click', openManualRequirementEditor);
   for (const scope of ['gen', 'replay'] as const) {
     getEl<HTMLButtonElement>(`correct-rule-submit-${scope}`)?.addEventListener('click', () => {
-      submitRuleCorrection(scope).catch((err) => setStatus(String(err), 'error'));
+      submitRuleCorrection(scope).catch((err) => setStatus(formatServerError('操作失败：', err instanceof Error ? err.message : String(err)), 'error'));
     });
   }
   getEl<HTMLButtonElement>('retry-requirement-job')?.addEventListener('click', () => {

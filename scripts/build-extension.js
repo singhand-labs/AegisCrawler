@@ -15,6 +15,7 @@ const entries = [
 ];
 
 const staticFiles = [
+  { from: path.join(srcDir, 'theme.css'), to: path.join(outDir, 'theme.css') },
   { from: path.join(srcDir, 'popup.html'), to: path.join(outDir, 'popup.html') },
   { from: path.join(srcDir, 'popup.css'), to: path.join(outDir, 'popup.css') },
   { from: path.join(srcDir, 'intent/intent-page.html'), to: path.join(outDir, 'intent/intent-page.html') },

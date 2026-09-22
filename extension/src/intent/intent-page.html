@@ -4,12 +4,27 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>确认采集意图 - AegisCrawler</title>
+  <link rel="stylesheet" href="../theme.css" />
   <link rel="stylesheet" href="intent-page.css" />
 </head>
 <body>
   <header>
-    <h1>确认采集意图</h1>
-    <div id="status">正在加载...</div>
+    <div class="header-row">
+      <h1>确认采集意图</h1>
+      <span id="wizard-loading" class="spinner hidden" aria-hidden="true"></span>
+    </div>
+    <nav id="wizard-stepper" class="wizard-stepper" aria-label="向导步骤">
+      <span class="stepper-item" data-step="intent"><span class="stepper-num">1</span>目的</span>
+      <span class="stepper-sep" aria-hidden="true"></span>
+      <span class="stepper-item" data-step="requirement"><span class="stepper-num">2</span>需求</span>
+      <span class="stepper-sep" aria-hidden="true"></span>
+      <span class="stepper-item" data-step="preview"><span class="stepper-num">3</span>预览</span>
+      <span class="stepper-sep" aria-hidden="true"></span>
+      <span class="stepper-item" data-step="replay"><span class="stepper-num">4</span>回放</span>
+      <span class="stepper-sep" aria-hidden="true"></span>
+      <span class="stepper-item" data-step="save"><span class="stepper-num">5</span>保存</span>
+    </nav>
+    <div id="status" class="status-pill">正在加载...</div>
     <div id="job-progress" class="hidden">
       <span id="job-progress-text"></span>
       <progress id="job-progress-bar" value="0" max="1"></progress>
@@ -98,7 +113,7 @@
     </section>
 
     <section id="step-confirm" class="step hidden">
-      <h2>步骤 4：确认每一步操作</h2>
+      <h2>确认每一步操作</h2>
       <p class="hint">请逐条确认以下 DSL 步骤与你的实际操作一致。</p>
       <div id="confirm-list"></div>
       <label class="checkbox-label">

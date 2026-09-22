@@ -1,0 +1,69 @@
+/* Shared AegisCrawler design tokens.
+ * Linked by popup.html and intent/intent-page.html; keep every value
+ * single-sourced here so the two surfaces stay visually coherent.
+ * The marking overlay and recording HUD render inside Shadow DOM with
+ * `:host { all: initial }`, so they hardcode the same palette instead. */
+
+:root {
+  /* brand */
+  --ag-primary: #1f6feb;
+  --ag-primary-hover: #3b82f6;
+  --ag-primary-active: #1a5fd0;
+  --ag-primary-soft: #eaf2ff;
+  --ag-primary-border: #b9d2ff;
+  --ag-on-primary: #ffffff;
+
+  /* semantic */
+  --ag-danger: #dc2626;
+  --ag-danger-hover: #ef4444;
+  --ag-danger-soft: #fef2f2;
+  --ag-danger-border: #fecaca;
+  --ag-success: #16a34a;
+  --ag-success-soft: #f0fdf4;
+  --ag-success-border: #bbf7d0;
+  --ag-warning: #d97706;
+  --ag-warning-soft: #fffbeb;
+  --ag-warning-border: #fde68a;
+  --ag-info: #2563eb;
+  --ag-info-soft: #eff6ff;
+
+  /* neutrals */
+  --ag-text: #1f2937;
+  --ag-text-secondary: #4b5563;
+  --ag-text-muted: #6b7280;
+  --ag-text-faint: #9ca3af;
+  --ag-border: #e5e7eb;
+  --ag-border-strong: #d1d5db;
+  --ag-bg: #f6f7f9;
+  --ag-surface: #ffffff;
+  --ag-surface-hover: #f9fafb;
+  --ag-surface-active: #f3f4f6;
+  --ag-overlay-soft: #f3f4f6;
+
+  /* geometry */
+  --ag-radius-sm: 6px;
+  --ag-radius-md: 10px;
+  --ag-radius-lg: 14px;
+  --ag-radius-pill: 999px;
+  --ag-space-1: 4px;
+  --ag-space-2: 8px;
+  --ag-space-3: 12px;
+  --ag-space-4: 16px;
+  --ag-space-5: 24px;
+
+  /* elevation + motion */
+  --ag-shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --ag-shadow-md: 0 4px 14px rgba(15, 23, 42, 0.1);
+  --ag-shadow-lg: 0 12px 32px rgba(15, 23, 42, 0.16);
+  --ag-transition: 140ms ease;
+
+  /* typography */
+  --ag-font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
+    Roboto, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --ag-font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --ag-text-xs: 11px;
+  --ag-text-sm: 12px;
+  --ag-text-md: 13px;
+  --ag-text-lg: 15px;
+  --ag-text-xl: 18px;
+}

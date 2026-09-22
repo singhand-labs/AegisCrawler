@@ -4,22 +4,44 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AegisCrawler 录制器</title>
+    <link rel="stylesheet" href="theme.css" />
     <link rel="stylesheet" href="popup.css" />
   </head>
   <body>
     <header>
-      <h1>AegisCrawler 录制器</h1>
-      <div id="status" aria-live="polite">就绪</div>
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <h1>AegisCrawler 录制器</h1>
+      </div>
+      <div id="status" class="status-pill" role="status" aria-live="polite">就绪</div>
     </header>
 
-    <section class="config-section">
+    <section class="card recording-section">
+      <h2>录制</h2>
+      <div id="recording-live" class="recording-live hidden" aria-live="polite">
+        <span class="rec-dot" aria-hidden="true"></span>
+        <span>录制中</span>
+        <span id="recording-timer" class="rec-timer">00:00</span>
+        <span class="rec-hint">Alt+M 可圈选标注意图</span>
+      </div>
+      <button id="start-recording" class="btn-primary">开始录制</button>
+      <button id="stop-recording" class="btn-danger" disabled>停止录制</button>
+    </section>
+
+    <section class="card config-section">
       <h2>服务端配置</h2>
       <label for="baseUrl">服务端地址</label>
-      <input id="baseUrl" type="text" placeholder="http://localhost:8080" />
+      <input id="baseUrl" type="text" placeholder="http://localhost:8080" spellcheck="false" />
       <label for="apiKey">Worker API Key</label>
-      <input id="apiKey" type="password" placeholder="可选" />
+      <div class="key-field">
+        <input id="apiKey" type="password" placeholder="可选" autocomplete="off" />
+        <button type="button" class="key-toggle" data-key-input="apiKey" aria-label="显示或隐藏 Worker API Key">显示</button>
+      </div>
       <label for="adminApiKey">Admin API Key</label>
-      <input id="adminApiKey" type="password" placeholder="可选" />
+      <div class="key-field">
+        <input id="adminApiKey" type="password" placeholder="可选" autocomplete="off" />
+        <button type="button" class="key-toggle" data-key-input="adminApiKey" aria-label="显示或隐藏 Admin API Key">显示</button>
+      </div>
       <label class="checkbox-label">
         <input id="remember-session" type="checkbox" checked />
         在当前浏览器会话中记住密钥
@@ -28,18 +50,12 @@
       <button id="save-config">保存配置</button>
     </section>
 
-    <section class="recording-section">
-      <h2>录制</h2>
-      <button id="start-recording">开始录制</button>
-      <button id="stop-recording" disabled>停止录制</button>
-    </section>
-
-    <section class="rule-section">
+    <section class="card rule-section">
       <h2>规则操作</h2>
       <button id="download-rule" disabled>下载规则</button>
     </section>
 
-    <section class="rule-section">
+    <section class="card rule-section">
       <h2>AI 增强</h2>
       <label for="userHint">优化意图（可选）</label>
       <input id="userHint" type="text" placeholder="例如：把商品标题和价格一起抓下来" />

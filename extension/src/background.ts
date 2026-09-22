@@ -366,8 +366,26 @@ async function loadActiveRecording(): Promise<ActiveRecordingSession | null> {
 async function saveActiveRecording(session: ActiveRecordingSession | null): Promise<void> {
   activeRecording = session;
   recordingState = session ? 'recording' : 'idle';
+  updateRecordingBadge(!!session);
   if (session) await chrome.storage.session.set({ [RECORDING_SESSION_KEY]: session });
   else await chrome.storage.session.remove(RECORDING_SESSION_KEY);
+}
+
+/** Keep the toolbar icon badged for the whole recording lifetime so state is
+ *  visible without opening the popup. Failures are cosmetic and swallowed. */
+function updateRecordingBadge(isRecording: boolean): void {
+  try {
+    const action = chrome.action;
+    if (!action) return;
+    if (isRecording) {
+      void action.setBadgeBackgroundColor({ color: '#dc2626' }).catch(() => undefined);
+      void action.setBadgeText({ text: 'REC' }).catch(() => undefined);
+    } else {
+      void action.setBadgeText({ text: '' }).catch(() => undefined);
+    }
+  } catch {
+    // Older Chrome without chrome.action or a revoked context: ignore.
+  }
 }
 
 async function resolveRecordingOptions(payload: unknown): Promise<Record<string, unknown>> {
@@ -1495,7 +1513,11 @@ async function handleMessage(
   switch (message.action) {
     case 'GET_STATE': {
       const session = await loadActiveRecording();
-      return { state: session ? 'recording' : recordingState, statusMessage: session?.statusMessage };
+      return {
+        state: session ? 'recording' : recordingState,
+        statusMessage: session?.statusMessage,
+        startedAt: session?.startedAt,
+      };
     }
 
     case 'RECORDING_CHECKPOINT': {
@@ -2699,6 +2721,12 @@ chrome.runtime.onStartup.addListener(() =>
     console.error('[background] replay session recovery (onStartup) failed:', err),
   ),
 );
+
+// Restore the REC badge when the service worker cold-boots with a persisted
+// recording session (e.g. after browser restart or SW eviction).
+void loadActiveRecording()
+  .then((session) => updateRecordingBadge(!!session))
+  .catch(() => undefined);
 
 const WIZARD_KEEP_ALIVE_ALARM_NAME = 'wizard-keep-alive';
 const WIZARD_KEEP_ALIVE_INTERVAL_MINUTES = 0.5; // 30 seconds (minimum allowed by alarms API)

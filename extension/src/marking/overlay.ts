@@ -121,6 +121,7 @@ export class PageMarkOverlay {
   private selectedElement: Element | null = null;
   private editingMarkId: string | null = null;
   private badges: HTMLDivElement[] = [];
+  private badgeRefreshFrame: number | null = null;
 
   constructor(private readonly adapter: PageMarkOverlayAdapter) {}
 
@@ -144,8 +145,8 @@ export class PageMarkOverlay {
     window.addEventListener('keydown', this.onKeyDown, true);
     document.addEventListener('mousemove', this.onMouseMove, true);
     document.addEventListener('click', this.onClick, true);
-    document.addEventListener('scroll', this.refreshBadges, true);
-    window.addEventListener('resize', this.refreshBadges, true);
+    document.addEventListener('scroll', this.scheduleBadgeRefresh, true);
+    window.addEventListener('resize', this.scheduleBadgeRefresh, true);
     this.refreshBadges();
   }
 
@@ -154,8 +155,12 @@ export class PageMarkOverlay {
     window.removeEventListener('keydown', this.onKeyDown, true);
     document.removeEventListener('mousemove', this.onMouseMove, true);
     document.removeEventListener('click', this.onClick, true);
-    document.removeEventListener('scroll', this.refreshBadges, true);
-    window.removeEventListener('resize', this.refreshBadges, true);
+    document.removeEventListener('scroll', this.scheduleBadgeRefresh, true);
+    window.removeEventListener('resize', this.scheduleBadgeRefresh, true);
+    if (this.badgeRefreshFrame !== null && typeof cancelAnimationFrame === 'function') {
+      cancelAnimationFrame(this.badgeRefreshFrame);
+    }
+    this.badgeRefreshFrame = null;
     this.clearBadges();
     this.host?.remove();
     this.host = null;
@@ -300,6 +305,9 @@ export class PageMarkOverlay {
     if (this.selectorPreview) this.selectorPreview.textContent = info.stableSelector || info.selector;
     const rect = element.getBoundingClientRect();
     this.positionPopover(rect);
+    // Focus the note field so typing can start immediately; Escape still
+    // cancels via the window keydown handler.
+    this.noteInput?.focus();
   }
 
   private positionPopover(rect: DOMRect): void {
@@ -358,6 +366,21 @@ export class PageMarkOverlay {
       this.root.appendChild(badge);
       this.badges.push(badge);
     }
+  };
+
+  /** rAF-throttled badge repositioning so scroll/resize storms cannot
+   *  thrash the DOM with full badge rebuilds on every event. */
+  private scheduleBadgeRefresh = (): void => {
+    if (this.badgeRefreshFrame !== null) return;
+    const raf = typeof requestAnimationFrame === 'function' ? requestAnimationFrame : null;
+    if (!raf) {
+      this.refreshBadges();
+      return;
+    }
+    this.badgeRefreshFrame = raf(() => {
+      this.badgeRefreshFrame = null;
+      this.refreshBadges();
+    });
   };
 
   private clearBadges(): void {

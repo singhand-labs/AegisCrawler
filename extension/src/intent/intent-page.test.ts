@@ -13,6 +13,14 @@ import type { Mock } from 'vitest';
 
 const WIZARD_HTML = `
   <div id="status"></div>
+  <span id="wizard-loading" class="spinner hidden"></span>
+  <nav id="wizard-stepper" class="wizard-stepper">
+    <span class="stepper-item" data-step="intent"><span class="stepper-num">1</span>目的</span>
+    <span class="stepper-item" data-step="requirement"><span class="stepper-num">2</span>需求</span>
+    <span class="stepper-item" data-step="preview"><span class="stepper-num">3</span>预览</span>
+    <span class="stepper-item" data-step="replay"><span class="stepper-num">4</span>回放</span>
+    <span class="stepper-item" data-step="save"><span class="stepper-num">5</span>保存</span>
+  </nav>
   <div id="job-progress" class="hidden">
     <span id="job-progress-text"></span>
     <progress id="job-progress-bar" value="0" max="1"></progress>
@@ -295,6 +303,76 @@ async function importModuleWithConnect(
 }
 
 describe('intent-page wizard', () => {
+  describe('stepper, spinner, and friendly errors', () => {
+    it('highlights the current step and marks earlier steps done', async () => {
+      const { mod } = await importModule({});
+      mod.showStep('preview');
+      const items = Array.from(document.querySelectorAll<HTMLElement>('.stepper-item'));
+      const byStep = (name: string): HTMLElement => {
+        const el = items.find((i) => i.getAttribute('data-step') === name);
+        if (!el) throw new Error(`stepper item ${name} missing`);
+        return el;
+      };
+      expect(byStep('preview').classList.contains('current')).toBe(true);
+      expect(byStep('intent').classList.contains('done')).toBe(true);
+      expect(byStep('requirement').classList.contains('done')).toBe(true);
+      expect(byStep('replay').classList.contains('current')).toBe(false);
+      expect(byStep('replay').classList.contains('done')).toBe(false);
+      expect(byStep('save').classList.contains('done')).toBe(false);
+    });
+
+    it('maps requirement-confirmed and confirm onto adjacent stepper stages', async () => {
+      const { mod } = await importModule({});
+      mod.showStep('requirement-confirmed');
+      expect(document.querySelector('.stepper-item[data-step="requirement"]')?.classList.contains('current')).toBe(true);
+      mod.showStep('confirm');
+      expect(document.querySelector('.stepper-item[data-step="replay"]')?.classList.contains('current')).toBe(true);
+    });
+
+    it('does not throw when the stepper is absent', async () => {
+      document.getElementById('wizard-stepper')?.remove();
+      const { mod } = await importModule({});
+      expect(() => mod.showStep('intent')).not.toThrow();
+    });
+
+    it('toggles the header spinner with in-flight state', async () => {
+      const { mod } = await importModule({});
+      const spinner = document.getElementById('wizard-loading');
+      if (!spinner) throw new Error('spinner missing');
+      expect(spinner.classList.contains('hidden')).toBe(true);
+      let release: () => void = () => undefined;
+      const gate = new Promise<void>((resolve) => { release = resolve; });
+      const op = mod.withInFlight('start-replay', async () => { await gate; });
+      await new Promise((r) => setTimeout(r, 0));
+      expect(spinner.classList.contains('hidden')).toBe(false);
+      release();
+      await op;
+      expect(spinner.classList.contains('hidden')).toBe(true);
+    });
+
+    it('wraps raw errors with a Chinese prefix while preserving the body', async () => {
+      const { mod } = await importModule({});
+      const message = mod.formatServerError('操作失败：', 'boom happened');
+      expect(message).toContain('操作失败：');
+      expect(message).toContain('boom happened');
+    });
+
+    it('moves an embedded traceId onto a readable secondary line', async () => {
+      const { mod } = await importModule({});
+      const message = mod.formatServerError('生成失败：', 'dsl job crashed (traceId: abc-123)');
+      expect(message).toContain('生成失败：');
+      expect(message).toContain('dsl job crashed');
+      expect(message).toContain('abc-123');
+      expect(message).not.toContain('(traceId: abc-123)');
+    });
+
+    it('falls back to a generic message for empty errors', async () => {
+      const { mod } = await importModule({});
+      expect(mod.formatServerError('前缀：', '')).toContain('未知错误');
+      expect(mod.formatServerError('前缀：', undefined)).toContain('未知错误');
+    });
+  });
+
   beforeEach(() => {
     document.body.innerHTML = WIZARD_HTML;
     sessionStorage.clear();

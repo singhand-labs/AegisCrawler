@@ -31,6 +31,7 @@ import type {
 import { effectiveRole } from '../../src/rule-engine/aria-roles';
 import { PageMarkOverlay } from './marking/overlay';
 import type { PageMarkOverlayAdapter } from './marking/overlay';
+import { RecordingHud } from './recording/hud';
 
 export type { RecorderOptions };
 
@@ -235,6 +236,7 @@ export class ContentRecorder {
   private stopPromise: Promise<PageAgentRecording> | null = null;
   private backgroundResumePromise: Promise<boolean> | null = null;
   private markOverlay: PageMarkOverlay | null = null;
+  private recordingHud: RecordingHud | null = null;
   // H-1: incremental byte-length tracking. Maintained per-push to avoid the
   // O(n²) cost of JSON.stringify(this.recording) on every event. Recalibrated
   // to the exact full-serialization value at checkpoint intervals.
@@ -312,6 +314,7 @@ export class ContentRecorder {
     this.attachNavigationListeners();
     this.wrapRecordingArrays(this.recording);
     this.attachMarkOverlay();
+    this.attachRecordingHud();
     // H-1: initialize incremental byte counter.
     this.recalibrateByteLength();
     this.startSelectorCleanup();
@@ -409,6 +412,8 @@ export class ContentRecorder {
 
     this.markOverlay?.unmount();
     this.markOverlay = null;
+    this.recordingHud?.unmount();
+    this.recordingHud = null;
 
     this.detachAllListeners();
 
@@ -621,6 +626,7 @@ export class ContentRecorder {
         const message = `${kind} recording limit is approaching (${value}/${max})`;
         this.recording.warnings?.push({ kind, message, timestamp: Date.now() });
         this.notifyRecordingStatus('warning', message);
+        this.recordingHud?.showLimitWarning(kind, value / max);
       }
     }
     if (bytes >= limits.maxBytes) {
@@ -868,6 +874,7 @@ export class ContentRecorder {
     this.attachNavigationListeners();
     this.wrapRecordingArrays(this.recording);
     this.attachMarkOverlay();
+    this.attachRecordingHud();
     // H-1: initialize incremental byte counter.
     this.recalibrateByteLength();
     this.startSelectorCleanup();
@@ -958,6 +965,26 @@ export class ContentRecorder {
     this.markOverlay.mount();
   }
 
+  private attachRecordingHud(): void {
+    // Visible for every recording protocol (v1 and v2), top frame only. The
+    // HUD is purely presentational: stop requests go through the background
+    // service worker so the normal stop/finalize path is reused.
+    if (!IS_TOP_FRAME || !this.recordingFlag || this.recordingHud) return;
+    const hud = new RecordingHud({
+      requestStop: () => {
+        const runtime = (globalThis as Record<string, unknown>).chrome as
+          | { runtime?: { sendMessage?: (message: unknown) => Promise<unknown> } }
+          | undefined;
+        runtime?.runtime?.sendMessage?.({ action: 'STOP_RECORDING' }).catch(() => undefined);
+      },
+      startedAt: () => this.startedAtMs,
+      showMarkHint: this.isV2(),
+    });
+    this.recordingHud = hud;
+    hud.mount();
+    hud.setEventCount(this.recording?.events.length ?? 0);
+  }
+
   private buildPageMark(element: Element, role: PageMarkRole, note: string): PageMark {
     const index = this.getElementIndex(element);
     const selector = this.inferSelector(element);
@@ -1020,6 +1047,7 @@ export class ContentRecorder {
       value: (...items: PageAgentEvent[]) => {
         const result = originalEventsPush(...items);
         this.eventCount = recording.events.length;
+        this.recordingHud?.setEventCount(this.eventCount);
         // H-1: track bytes incrementally per event.
         for (const item of items) {
           this.currentByteLength += ContentRecorder.computeItemByteLength(item);

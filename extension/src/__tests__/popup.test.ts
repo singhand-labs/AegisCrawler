@@ -15,6 +15,8 @@ const POPUP_ELEMENT_IDS = [
   'save-config',
   'start-recording',
   'stop-recording',
+  'recording-live',
+  'recording-timer',
   'download-rule',
   'enhance-rule',
   'userHint',
@@ -24,29 +26,40 @@ const POPUP_ELEMENT_IDS = [
 const POPUP_HTML = `
   <header>
     <h1>AegisCrawler 录制器</h1>
-    <div id="status">就绪</div>
+    <div id="status" class="status-pill">就绪</div>
   </header>
+
+  <section class="recording-section">
+    <h2>录制</h2>
+    <div id="recording-live" class="recording-live hidden">
+      <span class="rec-dot"></span>
+      <span>录制中</span>
+      <span id="recording-timer">00:00</span>
+    </div>
+    <button id="start-recording">开始录制</button>
+    <button id="stop-recording" disabled>停止录制</button>
+  </section>
 
   <section class="config-section">
     <h2>服务端配置</h2>
     <label for="baseUrl">服务端地址</label>
     <input id="baseUrl" type="text" placeholder="http://localhost:8080" />
     <label for="apiKey">Worker API Key</label>
-    <input id="apiKey" type="password" placeholder="可选" />
+    <div class="key-field">
+      <input id="apiKey" type="password" placeholder="可选" />
+      <button type="button" class="key-toggle" data-key-input="apiKey">显示</button>
+    </div>
     <label for="adminApiKey">Admin API Key</label>
-    <input id="adminApiKey" type="password" placeholder="可选" />
+    <div class="key-field">
+      <input id="adminApiKey" type="password" placeholder="可选" />
+      <button type="button" class="key-toggle" data-key-input="adminApiKey">显示</button>
+    </div>
     <label class="checkbox-label">
       <input id="remember-session" type="checkbox" checked />
       在当前浏览器会话中记住密钥
     </label>
     <p class="warning-text">API 密钥不会跨浏览器重启保留。</p>
     <button id="save-config">保存配置</button>
-  </section>
-
-  <section class="recording-section">
-    <h2>录制</h2>
-    <button id="start-recording">开始录制</button>
-    <button id="stop-recording" disabled>停止录制</button>
   </section>
 
   <section class="rule-section">
@@ -302,7 +315,7 @@ describe('popup UI', () => {
 
     expect(getStatus().textContent).toContain('录制已安全保存在本地');
     expect(getStatus().textContent).toContain('storage unavailable');
-    expect(getStatus().className).toBe('warning');
+    expect(getStatus().classList.contains('warning')).toBe(true);
     expect(getButton('download-rule').disabled).toBe(false);
     expect(chromeMock.tabsCreate).toHaveBeenCalledWith({
       url: 'chrome-extension://fake-id/intent/intent-page.html',
@@ -631,7 +644,7 @@ describe('popup UI', () => {
       payload: { userHint: '' },
     });
     expect(getStatus().textContent).toBe('增强已完成，但服务端未返回规则 ID');
-    expect(getStatus().className).toBe('warning');
+    expect(getStatus().classList.contains('warning')).toBe(true);
     // The stop-recording flow opens the intent page; ensure no admin URL was
     // opened in response to the enhance click.
     const openedUrls = chromeMock.tabsCreate.mock.calls.map((c) => (c[0] as { url: string }).url);
@@ -704,14 +717,120 @@ describe('popup UI', () => {
       payload: expect.objectContaining({ rememberSession: true }),
     });
   });
+  it('rejects a baseUrl that is not a valid http(s) URL before saving', async () => {
+    (document.getElementById('baseUrl') as HTMLInputElement).value = 'not a url';
+    getButton('save-config').click();
+    await flushPromises();
+    expect(chromeMock.sendMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'SET_SERVER_CONFIG' }),
+    );
+    expect(getStatus().classList.contains('warning')).toBe(true);
+    expect(getStatus().textContent).toContain('合法 URL');
+  });
+
+  it('rejects a baseUrl with an unsupported protocol', async () => {
+    (document.getElementById('baseUrl') as HTMLInputElement).value = 'ftp://example.com';
+    getButton('save-config').click();
+    await flushPromises();
+    expect(getStatus().textContent).toContain('http://');
+  });
+
+  it('still saves an empty baseUrl for offline usage', async () => {
+    (document.getElementById('baseUrl') as HTMLInputElement).value = '';
+    getButton('save-config').click();
+    await flushPromises();
+    expect(chromeMock.sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'SET_SERVER_CONFIG' }),
+    );
+    expect(getStatus().classList.contains('success')).toBe(true);
+  });
+
+  it('toggles key visibility and restores masking on a second click', async () => {
+    const keyInput = document.getElementById('apiKey') as HTMLInputElement;
+    const toggle = document.querySelector<HTMLButtonElement>('.key-toggle[data-key-input="apiKey"]');
+    if (!toggle) throw new Error('key toggle missing from fixture');
+    expect(keyInput.type).toBe('password');
+    toggle.click();
+    expect(keyInput.type).toBe('text');
+    expect(toggle.textContent).toBe('隐藏');
+    toggle.click();
+    expect(keyInput.type).toBe('password');
+    expect(toggle.textContent).toBe('显示');
+  });
+
+  it('asks for confirmation before overwriting a previous recording', async () => {
+    chromeMock.sendMessage.mockImplementation((async (message: { action: string; payload?: unknown }) => {
+      if (message.action === 'GET_LAST_RECORDING') return { recording: sampleRecording };
+      if (message.action === 'GET_STATE') return { state: 'idle' };
+      if (message.action === 'START_RECORDING') return { success: true };
+      return { success: true };
+    }) as typeof chromeMock.sendMessage);
+    vi.resetModules();
+    document.body.innerHTML = POPUP_HTML;
+    await import('../popup');
+    await flushPromises();
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    getButton('start-recording').click();
+    await flushPromises();
+    expect(confirmSpy).toHaveBeenCalled();
+    expect(chromeMock.sendMessage).not.toHaveBeenCalledWith({ action: 'START_RECORDING' });
+    confirmSpy.mockRestore();
+  });
+
+  it('shows the live recording indicator with an elapsed timer while recording', async () => {
+    const startedAt = Date.now() - 65000;
+    chromeMock.sendMessage.mockImplementation((async (message: { action: string; payload?: unknown }) => {
+      if (message.action === 'GET_STATE') return { state: 'recording', startedAt };
+      if (message.action === 'GET_LAST_RECORDING') return { recording: sampleRecording };
+      return { success: true };
+    }) as typeof chromeMock.sendMessage);
+    vi.resetModules();
+    document.body.innerHTML = POPUP_HTML;
+    await import('../popup');
+    await flushPromises();
+    const live = document.getElementById('recording-live');
+    expect(live?.classList.contains('hidden')).toBe(false);
+    expect(document.getElementById('recording-timer')?.textContent).toBe('01:05');
+  });
+
+  it('hides the live indicator after the recording stops', async () => {
+    getButton('start-recording').click();
+    await flushPromises();
+    expect(document.getElementById('recording-live')?.classList.contains('hidden')).toBe(false);
+    chromeMock.sendMessage.mockImplementation((async (message: { action: string; payload?: unknown }) => {
+      if (message.action === 'GET_STATE') return { state: 'recording' };
+      if (message.action === 'GET_LAST_RECORDING') return { recording: sampleRecording };
+      if (message.action === 'STOP_RECORDING') {
+        return { success: true, recording: sampleRecording };
+      }
+      return { success: true };
+    }) as typeof chromeMock.sendMessage);
+    getButton('stop-recording').click();
+    await flushPromises();
+    expect(document.getElementById('recording-live')?.classList.contains('hidden')).toBe(true);
+  });
+
+  it('collapses multi-line exception text into a single-line status', async () => {
+    chromeMock.sendMessage.mockImplementation((async (message: { action: string; payload?: unknown }) => {
+      if (message.action === 'GET_STATE') throw new Error('boom\nat somewhere (file.js:1:1)');
+      if (message.action === 'GET_LAST_RECORDING') return { recording: null };
+      return { success: true };
+    }) as typeof chromeMock.sendMessage);
+    vi.resetModules();
+    document.body.innerHTML = POPUP_HTML;
+    await import('../popup');
+    await flushPromises();
+    expect(getStatus().textContent).toBe('加载状态失败：boom');
+  });
+
+
 });
 
 describe('popup.html drift guard', () => {
   // Reads the real popup.html and asserts every ID the popup logic depends on
   // is present. Catches drift between the fixture above (POPUP_HTML) and the
   // shipped HTML so the two can no longer silently diverge.
-  it('contains every element ID referenced by popup.ts', () => {
-    const popupHtmlPath = resolve(__dirname, '..', 'popup.html');
+  it('contains every element ID referenced by popup.ts', () => {    const popupHtmlPath = resolve(__dirname, '..', 'popup.html');
     const html = readFileSync(popupHtmlPath, 'utf8');
     const missing = POPUP_ELEMENT_IDS.filter((id) => !new RegExp(`id=["']${id}["']`).test(html));
     expect(missing).toEqual([]);
