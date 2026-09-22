@@ -509,30 +509,46 @@ export class ContentRecorder {
     if (!this.recording || !this.recordingFlag || this.options.disableCrossPagePersistence) {
       return;
     }
-    try {
-      const state: PersistedRecordingState = {
-        version: 1,
-        recordingFlag: this.recordingFlag,
-        recording: this.recording,
-        options: this.options,
-        selectorToIndex: Array.from(this.selectorToIndex.entries()),
-        nextIndex: this.nextIndex,
-        lastRecordedUrl: this.lastRecordedUrl,
-      };
-      const serialized = JSON.stringify(state);
-      if (serialized.length > 4 * 1024 * 1024 && !this.isV2()) {
-        // Drop heavy domTrees before writing to sessionStorage so we stay under
-        // the typical 5-10 MB quota without losing events/selectors.
-        const cappedRecording = this.capRecordingSize(this.recording);
-        sessionStorage.setItem(
-          SESSION_STORAGE_KEY,
-          JSON.stringify({ ...state, recording: cappedRecording }),
-        );
-      } else {
-        sessionStorage.setItem(SESSION_STORAGE_KEY, serialized);
+    // sessionStorage is quota-bound (~5-10MB) and unlimitedStorage cannot
+    // extend it. For a v2 recording past that budget the full-state write
+    // ALWAYS throws after serializing tens of megabytes on the main thread —
+    // pure jank plus warning spam. Skip it and drop any stale smaller entry
+    // so a later navigation resumes from the authoritative background
+    // checkpoint (chrome.storage.local) instead of outdated page state.
+    const exceedsSessionBudget = this.isV2() && this.currentByteLength > 4 * 1024 * 1024;
+    if (exceedsSessionBudget) {
+      try {
+        sessionStorage.removeItem(SESSION_STORAGE_KEY);
+      } catch {
+        // A hostile or locked storage surface: the background checkpoint
+        // remains the durable fallback.
       }
-    } catch (err) {
-      console.warn('[ContentRecorder] failed to persist recording state:', err);
+    } else {
+      try {
+        const state: PersistedRecordingState = {
+          version: 1,
+          recordingFlag: this.recordingFlag,
+          recording: this.recording,
+          options: this.options,
+          selectorToIndex: Array.from(this.selectorToIndex.entries()),
+          nextIndex: this.nextIndex,
+          lastRecordedUrl: this.lastRecordedUrl,
+        };
+        const serialized = JSON.stringify(state);
+        if (serialized.length > 4 * 1024 * 1024 && !this.isV2()) {
+          // Drop heavy domTrees before writing to sessionStorage so we stay under
+          // the typical 5-10 MB quota without losing events/selectors.
+          const cappedRecording = this.capRecordingSize(this.recording);
+          sessionStorage.setItem(
+            SESSION_STORAGE_KEY,
+            JSON.stringify({ ...state, recording: cappedRecording }),
+          );
+        } else {
+          sessionStorage.setItem(SESSION_STORAGE_KEY, serialized);
+        }
+      } catch (err) {
+        console.warn('[ContentRecorder] failed to persist recording state:', err);
+      }
     }
     if (this.isV2()) this.checkpointToBackground(forceCheckpoint);
   }
@@ -1007,7 +1023,20 @@ export class ContentRecorder {
         const runtime = (globalThis as Record<string, unknown>).chrome as
           | { runtime?: { sendMessage?: (message: unknown) => Promise<unknown> } }
           | undefined;
-        runtime?.runtime?.sendMessage?.({ action: 'STOP_RECORDING' }).catch(() => undefined);
+        // NOT the privileged STOP_RECORDING: the sender gate rejects that
+        // from content scripts. This tab-scoped variant is honored only for
+        // the tab that owns the active session; surface a failure instead of
+        // swallowing it so the HUD button never dies silently.
+        runtime?.runtime?.sendMessage?.({ action: 'REQUEST_STOP_RECORDING' })
+          .then((response) => {
+            const result = response as { success?: boolean; error?: string } | undefined;
+            if (result && result.success !== true) {
+              this.recordingHud?.setStopFailed(result.error ?? '未知错误');
+            }
+          })
+          .catch((err: unknown) => {
+            this.recordingHud?.setStopFailed(err instanceof Error ? err.message : String(err));
+          });
       },
       startedAt: () => this.startedAtMs,
       showMarkHint: this.isV2(),

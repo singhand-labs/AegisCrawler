@@ -28,6 +28,6 @@
       "128": "icons/icon128.png"
     }
   },
-  "permissions": ["activeTab", "storage", "scripting", "webNavigation", "alarms", "downloads"],
+  "permissions": ["activeTab", "storage", "unlimitedStorage", "scripting", "webNavigation", "alarms", "downloads"],
   "host_permissions": ["*://*/*"]
 }

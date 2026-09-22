@@ -1571,6 +1571,125 @@ const STATE_MUTATING_ACTIONS = new Set([
   'DOWNLOAD_RULE',
 ]);
 
+/** Shared stop implementation for the privileged popup STOP_RECORDING and the
+ *  tab-scoped HUD REQUEST_STOP_RECORDING. */
+async function stopActiveRecording(): Promise<{
+  success?: boolean;
+  error?: string;
+  recording?: PageAgentRecording;
+  persistenceWarning?: string;
+}> {
+  const session = await loadActiveRecording();
+  // Idempotent stop: an auto limit-stop (size/duration/action) already
+  // finalized and stored a complete recording and cleared the session.
+  // Draining a dead content script again would only time out after 30s,
+  // so return the stored recording — the popup continues into the wizard
+  // exactly like a manual stop and retries any failed upload.
+  if (!session) {
+    const stored = await recordingStore.get();
+    if (stored?.version === '2.0.0' && stored.termination?.complete) {
+      let persistenceWarning: string | undefined;
+      try {
+        await persistRecordingV2(stored);
+      } catch (error) {
+        persistenceWarning = error instanceof Error ? error.message : String(error);
+      }
+      return { success: true, recording: stored, persistenceWarning };
+    }
+  }
+  const tab = session ? { id: session.tabId } : await getActiveTab();
+  if (!tab?.id) {
+    return { success: false, error: '没有活动标签页' };
+  }
+  // A full-page navigation replaces the document and its isolated content
+  // script. Ensure the idempotent singleton is attached to the current
+  // top-frame document before asking it to drain and stop the recording.
+  await ensureContentScript(tab.id);
+  // Draining a very large recording (heavy React pages can accumulate tens
+  // of megabytes of snapshots) can stall the message channel long past any
+  // reasonable UI wait. Bound the drain and fall back to the durable disk
+  // checkpoint so STOP always answers instead of hanging the popup.
+  const STOP_DRAIN_TIMEOUT_MS = 30000;
+  let response: {
+    recording?: PageAgentRecording;
+    success?: boolean;
+    error?: string;
+  } | undefined;
+  let drainTimedOut = false;
+  try {
+    response = (await Promise.race([
+      sendToContentScript(tab.id, { action: 'STOP_RECORDING' }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('stop-drain-timeout')), STOP_DRAIN_TIMEOUT_MS)),
+    ])) as typeof response;
+  } catch (drainError) {
+    const messageText = drainError instanceof Error ? drainError.message : String(drainError);
+    if (messageText !== 'stop-drain-timeout') throw drainError;
+    drainTimedOut = true;
+    const checkpoint = await chrome.storage.local.get(recordingCheckpointKey(tab.id)).catch(() => undefined);
+    const checkpointState = checkpoint?.[recordingCheckpointKey(tab.id)] as { recording?: PageAgentRecording } | undefined;
+    if (!checkpointState?.recording) {
+      return {
+        success: false,
+        error: '停止录制超时：录制数据过大且没有可用的检查点，请重试或关闭该标签页后重新录制',
+      };
+    }
+    response = { recording: checkpointState.recording, success: true };
+  }
+  if (drainTimedOut && response?.recording) {
+    // The checkpoint snapshot lags the live buffer; mark the recording as
+    // not cleanly terminated so downstream gates treat it honestly.
+    const prior = response.recording.termination;
+    response.recording.termination = {
+      reason: prior?.reason ?? 'user',
+      message: prior?.message ?? 'stopped via checkpoint fallback after drain timeout',
+      timestamp: prior?.timestamp ?? Date.now(),
+      complete: false,
+    };
+  }
+  // Don't trust the content-script response shape: if no recording was
+  // returned, surface the error instead of storing undefined and reporting
+  // success.
+  if (!response?.recording) {
+    return { success: false, error: response?.error ?? '录制未返回有效数据' };
+  }
+  const recording = response.recording;
+  // Cross-origin merge artifacts can leave a stale 'final' snapshot
+  // mid-list; the recording contract requires the final snapshot last.
+  // Reorder defensively before persisting.
+  if (Array.isArray(recording.snapshots)) {
+    const finalIndex = recording.snapshots.findIndex((s: { phase?: string }) => s.phase === 'final');
+    if (finalIndex !== -1 && finalIndex !== recording.snapshots.length - 1) {
+      const [finalSnapshot] = recording.snapshots.splice(finalIndex, 1);
+      recording.snapshots.push(finalSnapshot);
+    }
+  }
+  const expectedProtocol = typeof session?.options.protocolVersion === 'string'
+    ? session.options.protocolVersion
+    : undefined;
+  if (expectedProtocol && recording.version !== expectedProtocol) {
+    return {
+      success: false,
+      error: `录制协议不匹配：期望 ${expectedProtocol}，收到 ${recording.version}`,
+    };
+  }
+  await recordingStore.set(recording);
+  await saveActiveRecording(null);
+  // D-3: clear the disk-backed checkpoint now that the final recording is
+  // durably persisted to recordingStore (IndexedDB).
+  if (tab.id != null) {
+    await chrome.storage.local.remove(recordingCheckpointKey(tab.id)).catch(() => undefined);
+  }
+  let persistenceWarning: string | undefined;
+  if (recording.version === '2.0.0' && recording.termination?.complete) {
+    try {
+      await persistRecordingV2(recording);
+    } catch (error) {
+      persistenceWarning = error instanceof Error ? error.message : String(error);
+    }
+  }
+  return { success: true, recording, persistenceWarning };
+}
+
 async function handleMessage(
   message: { action: string; payload?: unknown },
   sender: ChromeRuntimeMessageSender,
@@ -1817,115 +1936,27 @@ async function handleMessage(
     }
 
     case 'STOP_RECORDING': {
+      return stopActiveRecording();
+    }
+
+    // Stop channel for the in-page recording HUD. STOP_RECORDING itself is
+    // privileged (popup-only) and the sender gate rejects it from content
+    // scripts, so the HUD needs this separate, explicitly tab-scoped action —
+    // honored only from the tab that owns the active session (same trust rule
+    // as REPLAY_PROGRESS §5.2).
+    case 'REQUEST_STOP_RECORDING': {
       const session = await loadActiveRecording();
-      // Idempotent stop: an auto limit-stop (size/duration/action) already
-      // finalized and stored a complete recording and cleared the session.
-      // Draining a dead content script again would only time out after 30s,
-      // so return the stored recording — the popup continues into the wizard
-      // exactly like a manual stop and retries any failed upload.
-      if (!session) {
-        const stored = await recordingStore.get();
-        if (stored?.version === '2.0.0' && stored.termination?.complete) {
-          let persistenceWarning: string | undefined;
-          try {
-            await persistRecordingV2(stored);
-          } catch (error) {
-            persistenceWarning = error instanceof Error ? error.message : String(error);
-          }
-          return { success: true, recording: stored, persistenceWarning };
-        }
+      if (!session || sender.tab?.id !== session.tabId) {
+        return { success: false, error: '当前页面没有进行中的录制' };
       }
-      const tab = session ? { id: session.tabId } : await getActiveTab();
-      if (!tab?.id) {
-        return { success: false, error: '没有活动标签页' };
+      const response = await stopActiveRecording();
+      // The HUD stop has no popup to open the wizard afterwards — give it
+      // the same follow-through as the auto-stop path (deduplicated by the
+      // tracked wizard tab id).
+      if (response.success) {
+        void openIntentWizardIfAbsent();
       }
-      // A full-page navigation replaces the document and its isolated content
-      // script. Ensure the idempotent singleton is attached to the current
-      // top-frame document before asking it to drain and stop the recording.
-      await ensureContentScript(tab.id);
-      // Draining a very large recording (heavy React pages can accumulate tens
-      // of megabytes of snapshots) can stall the message channel long past any
-      // reasonable UI wait. Bound the drain and fall back to the durable disk
-      // checkpoint so STOP always answers instead of hanging the popup.
-      const STOP_DRAIN_TIMEOUT_MS = 30000;
-      let response: {
-        recording?: PageAgentRecording;
-        success?: boolean;
-        error?: string;
-      } | undefined;
-      let drainTimedOut = false;
-      try {
-        response = (await Promise.race([
-          sendToContentScript(tab.id, { action: 'STOP_RECORDING' }),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('stop-drain-timeout')), STOP_DRAIN_TIMEOUT_MS)),
-        ])) as typeof response;
-      } catch (drainError) {
-        const messageText = drainError instanceof Error ? drainError.message : String(drainError);
-        if (messageText !== 'stop-drain-timeout') throw drainError;
-        drainTimedOut = true;
-        const checkpoint = await chrome.storage.local.get(recordingCheckpointKey(tab.id)).catch(() => undefined);
-        const checkpointState = checkpoint?.[recordingCheckpointKey(tab.id)] as { recording?: PageAgentRecording } | undefined;
-        if (!checkpointState?.recording) {
-          return {
-            success: false,
-            error: '停止录制超时：录制数据过大且没有可用的检查点，请重试或关闭该标签页后重新录制',
-          };
-        }
-        response = { recording: checkpointState.recording, success: true };
-      }
-      if (drainTimedOut && response?.recording) {
-        // The checkpoint snapshot lags the live buffer; mark the recording as
-        // not cleanly terminated so downstream gates treat it honestly.
-        const prior = response.recording.termination;
-        response.recording.termination = {
-          reason: prior?.reason ?? 'user',
-          message: prior?.message ?? 'stopped via checkpoint fallback after drain timeout',
-          timestamp: prior?.timestamp ?? Date.now(),
-          complete: false,
-        };
-      }
-      // Don't trust the content-script response shape: if no recording was
-      // returned, surface the error instead of storing undefined and reporting
-      // success.
-      if (!response?.recording) {
-        return { success: false, error: response?.error ?? '录制未返回有效数据' };
-      }
-      const recording = response.recording;
-      // Cross-origin merge artifacts can leave a stale 'final' snapshot
-      // mid-list; the recording contract requires the final snapshot last.
-      // Reorder defensively before persisting.
-      if (Array.isArray(recording.snapshots)) {
-        const finalIndex = recording.snapshots.findIndex((s: { phase?: string }) => s.phase === 'final');
-        if (finalIndex !== -1 && finalIndex !== recording.snapshots.length - 1) {
-          const [finalSnapshot] = recording.snapshots.splice(finalIndex, 1);
-          recording.snapshots.push(finalSnapshot);
-        }
-      }
-      const expectedProtocol = typeof session?.options.protocolVersion === 'string'
-        ? session.options.protocolVersion
-        : undefined;
-      if (expectedProtocol && recording.version !== expectedProtocol) {
-        return {
-          success: false,
-          error: `录制协议不匹配：期望 ${expectedProtocol}，收到 ${recording.version}`,
-        };
-      }
-      await recordingStore.set(recording);
-      await saveActiveRecording(null);
-      // D-3: clear the disk-backed checkpoint now that the final recording is
-      // durably persisted to recordingStore (IndexedDB).
-      if (tab.id != null) {
-        await chrome.storage.local.remove(recordingCheckpointKey(tab.id)).catch(() => undefined);
-      }
-      let persistenceWarning: string | undefined;
-      if (recording.version === '2.0.0' && recording.termination?.complete) {
-        try {
-          await persistRecordingV2(recording);
-        } catch (error) {
-          persistenceWarning = error instanceof Error ? error.message : String(error);
-        }
-      }
-      return { success: true, recording, persistenceWarning };
+      return response;
     }
 
     case 'GET_LAST_RECORDING': {

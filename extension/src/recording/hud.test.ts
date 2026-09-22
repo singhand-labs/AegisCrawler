@@ -68,6 +68,25 @@ describe('RecordingHud', () => {
     stopBtn.click();
     expect(requestStop).toHaveBeenCalledTimes(1);
     expect(stopBtn.disabled).toBe(true);
+    // The click must visibly land even though draining a large recording
+    // takes seconds: the label flips to a pending state immediately.
+    expect(stopBtn.textContent).toBe('正在停止…');
+    hud.unmount();
+  });
+
+  it('restores the stop button and surfaces an alert when the stop is rejected', () => {
+    const { hud } = createHud();
+    hud.mount();
+    const stopBtn = hudEl().querySelector<HTMLButtonElement>('[data-hud="stop"]');
+    if (!stopBtn) throw new Error('stop button missing');
+    stopBtn.click();
+    hud.setStopFailed('当前页面没有进行中的录制');
+    expect(stopBtn.disabled).toBe(false);
+    expect(stopBtn.textContent).toBe('停止录制');
+    const toast = hudEl().querySelector('.toast');
+    expect(toast?.getAttribute('role')).toBe('alert');
+    expect(toast?.textContent).toContain('停止录制失败');
+    expect(toast?.textContent).toContain('当前页面没有进行中的录制');
     hud.unmount();
   });
 

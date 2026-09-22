@@ -347,6 +347,46 @@ describe('background service worker', () => {
       expect(alarms.clear).toHaveBeenCalledWith('recording-state-keepalive');
     });
 
+    it('stops via the tab-scoped HUD channel from the recording tab and rejects other tabs', async () => {
+      await sendMessage({ action: 'START_RECORDING' }); // session tabId = 42
+      const stranger = (await sendMessage(
+        { action: 'REQUEST_STOP_RECORDING' },
+        { tab: { id: 7 }, frameId: 0 },
+      )) as { success?: boolean; error?: string };
+      expect(stranger.success).toBe(false);
+
+      const tabsCreate = chromeMock.mock.tabs.create;
+      tabsCreate.mockClear();
+      const stopped = (await sendMessage(
+        { action: 'REQUEST_STOP_RECORDING' },
+        { tab: { id: 42 }, frameId: 0 },
+      )) as { success?: boolean; recording?: unknown };
+      expect(stopped.success).toBe(true);
+      expect(stopped.recording).toBeTruthy();
+      // The HUD has no popup to open the wizard: the stop itself must.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(tabsCreate).toHaveBeenCalledWith({
+        url: 'chrome-extension://fake-id/intent/intent-page.html',
+      });
+      const state = (await sendMessage({ action: 'GET_STATE' })) as { state: string };
+      expect(state.state).toBe('idle');
+    });
+
+    it('rejects the privileged STOP_RECORDING from a content-script sender (popup-only)', async () => {
+      const response = await new Promise((resolve) => {
+        const sendResponse = vi.fn((r) => resolve(r));
+        const handled = chromeMock.listeners[0](
+          { action: 'STOP_RECORDING' },
+          { tab: { id: 42 }, frameId: 0, url: 'https://example.com/' },
+          sendResponse,
+        );
+        // The gate answers immediately and marks the message unhandled.
+        expect(handled).toBe(false);
+      }) as { success?: boolean; error?: string };
+      expect(response.success).toBe(false);
+      expect(response.error).toContain('特权');
+    });
+
     const completeV2Recording = () => ({
       version: '2.0.0',
       meta: { startUrl: 'https://example.com/', title: 'Example', recordedAt: '2026-07-06T00:00:00Z', domain: 'example.com' },

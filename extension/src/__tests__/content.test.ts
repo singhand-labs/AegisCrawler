@@ -2493,6 +2493,34 @@ describe('ContentRecorder', () => {
       await recorder.stopAsync();
     });
 
+    it('skips the doomed sessionStorage write for oversized v2 state but still checkpoints', async () => {
+      const sendMessage = vi.fn().mockResolvedValue({ success: true });
+      (globalThis as Record<string, unknown>).chrome = { runtime: { sendMessage } };
+      const recorder = new ContentRecorder({ protocolVersion: '2.0.0' });
+      recorder.start();
+      await flushPromises();
+      // A small v2 recording still uses the sessionStorage fast path.
+      expect(sessionStorage.getItem('__ocRecordingState')).toBeTruthy();
+
+      const checkpointCalls = () => sendMessage.mock.calls.filter(
+        (c) => (c[0] as { action?: string }).action === 'RECORDING_CHECKPOINT',
+      ).length;
+      const before = checkpointCalls();
+      const internals = recorder as unknown as {
+        persistState: (force?: boolean) => void;
+        currentByteLength: number;
+      };
+      // Past the ~4MB sessionStorage budget the write can never succeed
+      // (quota), so persistState must skip serializing tens of megabytes on
+      // the main thread and rely on the durable background checkpoint.
+      internals.currentByteLength = 5 * 1024 * 1024;
+      internals.persistState(true);
+      expect(sessionStorage.getItem('__ocRecordingState')).toBeNull();
+      expect(checkpointCalls()).toBe(before + 1);
+
+      await recorder.stopAsync();
+    });
+
     it('resumeFromBackgroundIfNeeded falls back to chrome.storage.local when SW has no in-memory session', async () => {
       const v2Recording = {
         version: '2.0.0',

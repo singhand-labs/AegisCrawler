@@ -28,6 +28,7 @@ export class RecordingHud {
   private timerEl: HTMLElement | null = null;
   private countEl: HTMLElement | null = null;
   private toastArea: HTMLElement | null = null;
+  private stopBtn: HTMLButtonElement | null = null;
   private timerId: ReturnType<typeof setInterval> | undefined;
 
   constructor(adapter: RecordingHudAdapter) {
@@ -45,11 +46,11 @@ export class RecordingHud {
     this.timerEl = root.querySelector('[data-hud="timer"]');
     this.countEl = root.querySelector('[data-hud="count"]');
     this.toastArea = root.querySelector('[data-hud="toasts"]');
-    const stopBtn = root.querySelector<HTMLButtonElement>('[data-hud="stop"]');
-    stopBtn?.addEventListener('click', (event) => {
+    this.stopBtn = root.querySelector<HTMLButtonElement>('[data-hud="stop"]');
+    this.stopBtn?.addEventListener('click', (event) => {
       event.preventDefault();
       event.stopPropagation();
-      stopBtn.disabled = true;
+      this.setStopPending();
       this.adapter.requestStop();
     });
     if (this.adapter.showMarkHint !== true) {
@@ -71,10 +72,40 @@ export class RecordingHud {
     this.timerEl = null;
     this.countEl = null;
     this.toastArea = null;
+    this.stopBtn = null;
   }
 
   setEventCount(count: number): void {
     if (this.countEl) this.countEl.textContent = `${count} 步`;
+  }
+
+  /** Draining a large recording takes seconds; the click must visibly land. */
+  setStopPending(): void {
+    if (!this.stopBtn) return;
+    this.stopBtn.disabled = true;
+    this.stopBtn.textContent = '正在停止…';
+  }
+
+  /** A rejected stop must not leave a dead button behind. */
+  setStopFailed(message: string): void {
+    if (this.stopBtn) {
+      this.stopBtn.disabled = false;
+      this.stopBtn.textContent = '停止录制';
+    }
+    this.showStopError(message);
+  }
+
+  private showStopError(message: string): void {
+    if (!this.toastArea || !this.host?.isConnected) return;
+    const toast = document.createElement('div');
+    toast.className = 'toast';
+    toast.setAttribute('role', 'alert');
+    toast.textContent = `停止录制失败：${message}`;
+    while (this.toastArea.children.length >= 3) {
+      this.toastArea.firstElementChild?.remove();
+    }
+    this.toastArea.appendChild(toast);
+    setTimeout(() => toast.remove(), 6000);
   }
 
   /** Chinese toast for an approaching recording limit; auto-dismisses. */
