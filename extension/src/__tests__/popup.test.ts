@@ -17,6 +17,9 @@ const POPUP_ELEMENT_IDS = [
   'stop-recording',
   'recording-live',
   'recording-timer',
+  'overwrite-confirm',
+  'overwrite-accept',
+  'overwrite-cancel',
   'download-rule',
   'enhance-rule',
   'userHint',
@@ -39,6 +42,13 @@ const POPUP_HTML = `
       <span class="rec-dot"></span>
       <span>录制中</span>
       <span id="recording-timer">00:00</span>
+    </div>
+    <div id="overwrite-confirm" class="overwrite-confirm hidden">
+      <p>重新录制会覆盖上一次录制的内容（已生成的未保存规则也会失效）。</p>
+      <div class="overwrite-actions">
+        <button id="overwrite-accept">覆盖并重新录制</button>
+        <button id="overwrite-cancel">取消</button>
+      </div>
     </div>
     <button id="start-recording">开始录制</button>
     <button id="stop-recording" disabled>停止录制</button>
@@ -115,6 +125,7 @@ function createChromeMock() {
     downloadError: undefined as string | undefined,
     downloadReject: false,
     loadStateReject: false,
+    lastRecording: null as unknown,
   };
 
   const tabsCreate = vi.fn();
@@ -127,7 +138,7 @@ function createChromeMock() {
         }
         return { state: 'idle' };
       case 'GET_LAST_RECORDING':
-        return { recording: null };
+        return { recording: options.lastRecording ?? null };
       case 'START_RECORDING':
         if (options.startReturnsUndefined) {
           return undefined;
@@ -308,6 +319,48 @@ describe('popup UI', () => {
     expect(chromeMock.tabsCreate).toHaveBeenCalledWith({
       url: 'chrome-extension://fake-id/intent/intent-page.html',
     });
+  });
+
+  it('asks in-page before overwriting a previous recording and starts only after explicit confirmation', async () => {
+    // Re-load the popup with a previous recording present: fresh DOM (no
+    // listeners from the beforeEach instance) + fresh module registry.
+    chromeMock.options.lastRecording = sampleRecording;
+    document.body.innerHTML = POPUP_HTML;
+    vi.resetModules();
+    await import('../popup');
+    await flushPromises();
+
+    const confirmEl = document.getElementById('overwrite-confirm') as HTMLDivElement;
+    // First click only raises the in-page confirmation: no START_RECORDING yet.
+    getButton('start-recording').click();
+    await flushPromises();
+    expect(chromeMock.sendMessage).not.toHaveBeenCalledWith({ action: 'START_RECORDING' });
+    expect(confirmEl.classList.contains('hidden')).toBe(false);
+    expect(getStatus().textContent).toContain('确认');
+
+    // Cancel keeps the previous recording and hides the panel.
+    getButton('overwrite-cancel').click();
+    await flushPromises();
+    expect(confirmEl.classList.contains('hidden')).toBe(true);
+    expect(chromeMock.sendMessage).not.toHaveBeenCalledWith({ action: 'START_RECORDING' });
+    expect(getStatus().textContent).toContain('已取消');
+
+    // Accept proceeds to a real start.
+    getButton('start-recording').click();
+    await flushPromises();
+    getButton('overwrite-accept').click();
+    await flushPromises();
+    expect(chromeMock.sendMessage).toHaveBeenCalledWith({ action: 'START_RECORDING' });
+    expect(confirmEl.classList.contains('hidden')).toBe(true);
+    expect(getStatus().textContent).toBe('录制已开始');
+  });
+
+  it('does not raise the overwrite confirmation without a previous recording', async () => {
+    const confirmEl = document.getElementById('overwrite-confirm') as HTMLDivElement;
+    getButton('start-recording').click();
+    await flushPromises();
+    expect(chromeMock.sendMessage).toHaveBeenCalledWith({ action: 'START_RECORDING' });
+    expect(confirmEl.classList.contains('hidden')).toBe(true);
   });
 
   it('keeps a local recording usable when server persistence must be retried', async () => {
@@ -760,25 +813,6 @@ describe('popup UI', () => {
     toggle.click();
     expect(keyInput.type).toBe('password');
     expect(toggle.textContent).toBe('显示');
-  });
-
-  it('asks for confirmation before overwriting a previous recording', async () => {
-    chromeMock.sendMessage.mockImplementation((async (message: { action: string; payload?: unknown }) => {
-      if (message.action === 'GET_LAST_RECORDING') return { recording: sampleRecording };
-      if (message.action === 'GET_STATE') return { state: 'idle' };
-      if (message.action === 'START_RECORDING') return { success: true };
-      return { success: true };
-    }) as typeof chromeMock.sendMessage);
-    vi.resetModules();
-    document.body.innerHTML = POPUP_HTML;
-    await import('../popup');
-    await flushPromises();
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
-    getButton('start-recording').click();
-    await flushPromises();
-    expect(confirmSpy).toHaveBeenCalled();
-    expect(chromeMock.sendMessage).not.toHaveBeenCalledWith({ action: 'START_RECORDING' });
-    confirmSpy.mockRestore();
   });
 
   it('shows the live recording indicator with an elapsed timer while recording', async () => {

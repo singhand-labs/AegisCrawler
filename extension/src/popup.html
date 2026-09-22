@@ -25,6 +25,13 @@
         <span id="recording-timer" class="rec-timer">00:00</span>
         <span class="rec-hint">Alt+M 可圈选标注意图</span>
       </div>
+      <div id="overwrite-confirm" class="overwrite-confirm hidden" role="alertdialog" aria-label="覆盖上一次录制的确认">
+        <p>重新录制会覆盖上一次录制的内容（已生成的未保存规则也会失效）。</p>
+        <div class="overwrite-actions">
+          <button id="overwrite-accept" class="btn-danger">覆盖并重新录制</button>
+          <button id="overwrite-cancel">取消</button>
+        </div>
+      </div>
       <button id="start-recording" class="btn-primary">开始录制</button>
       <button id="stop-recording" class="btn-danger" disabled>停止录制</button>
     </section>

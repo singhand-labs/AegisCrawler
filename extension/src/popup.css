@@ -262,6 +262,38 @@ input[type='password']:focus {
   font-size: var(--ag-text-xs);
 }
 
+/* ---------- overwrite confirmation ---------- */
+
+/* In-page confirmation instead of window.confirm: native dialogs from a
+ * hidden page (popup opened as a background tab) are suppressed by Chrome
+ * and block the renderer forever. */
+.overwrite-confirm {
+  margin: 8px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--ag-warning-border);
+  border-radius: var(--ag-radius-sm);
+  background: var(--ag-warning-soft);
+}
+
+.overwrite-confirm.hidden {
+  display: none;
+}
+
+.overwrite-confirm p {
+  margin: 0 0 8px;
+  font-size: var(--ag-text-sm);
+  color: var(--ag-text);
+}
+
+.overwrite-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.overwrite-actions button {
+  margin-bottom: 0;
+}
+
 /* ---------- buttons ---------- */
 
 button {

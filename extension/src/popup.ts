@@ -65,6 +65,9 @@ function updateUI(): void {
   if (getElement<HTMLButtonElement>('save-config')) {
     (getElement<HTMLButtonElement>('save-config') as HTMLButtonElement).disabled = busy;
   }
+  // A confirmation that outlived its reason (recording started elsewhere,
+  // previous recording gone) must not linger.
+  if (!state.hasRecording || state.isRecording) hideOverwriteConfirm();
 }
 
 /** Disable every action while one is in flight so a double click cannot fire duplicates. */
@@ -162,19 +165,35 @@ async function loadState(): Promise<void> {
   if (stateResponse.statusMessage) setStatus(stateResponse.statusMessage, 'info');
 }
 
-/** Ask before silently discarding a previous recording. jsdom's unimplemented
- *  confirm() returns undefined, so only an explicit `false` cancels. */
-function confirmOverwritePreviousRecording(): boolean {
-  if (!state.hasRecording || state.isRecording) return true;
-  try {
-    return window.confirm('重新录制会覆盖上一次录制的内容（已生成的未保存规则也会失效），确定继续吗？') !== false;
-  } catch {
-    return true;
-  }
+function showOverwriteConfirm(): void {
+  getElement<HTMLElement>('overwrite-confirm')?.classList.remove('hidden');
 }
 
+function hideOverwriteConfirm(): void {
+  getElement<HTMLElement>('overwrite-confirm')?.classList.add('hidden');
+}
+
+/** Ask before silently discarding a previous recording — in-page, never
+ *  window.confirm: Chrome suppresses dialogs raised by hidden pages (a popup
+ *  opened as a background tab), which would block the page forever. */
 async function startRecording(): Promise<void> {
-  if (!confirmOverwritePreviousRecording()) return;
+  if (state.hasRecording && !state.isRecording) {
+    showOverwriteConfirm();
+    setStatus('请先确认是否覆盖上一次录制', 'warning');
+    return;
+  }
+  await beginRecording();
+}
+
+/** Entry for the in-page confirm panel: the overwrite decision was made
+ *  explicitly there, so start immediately. */
+async function startRecordingAfterOverwriteConfirmed(): Promise<void> {
+  hideOverwriteConfirm();
+  await beginRecording();
+}
+
+async function beginRecording(): Promise<void> {
+  hideOverwriteConfirm();
   setStatus('正在开始录制...');
   const response = (await sendAction('START_RECORDING')) as { success?: boolean; error?: string };
   const error = handleResponse(response);
@@ -346,6 +365,13 @@ function initPopup(): void {
 
   getElement<HTMLButtonElement>('start-recording')?.addEventListener('click', () => {
     withBusy(() => startRecording()).catch((err) => setStatus(`开始录制失败：${formatUserError(err)}`, 'error'));
+  });
+  getElement<HTMLButtonElement>('overwrite-accept')?.addEventListener('click', () => {
+    withBusy(() => startRecordingAfterOverwriteConfirmed()).catch((err) => setStatus(`开始录制失败：${formatUserError(err)}`, 'error'));
+  });
+  getElement<HTMLButtonElement>('overwrite-cancel')?.addEventListener('click', () => {
+    hideOverwriteConfirm();
+    setStatus('已取消，上一次录制保持不变', 'info');
   });
   getElement<HTMLButtonElement>('stop-recording')?.addEventListener('click', () => {
     withBusy(() => stopRecording()).catch((err) => setStatus(`停止录制失败：${formatUserError(err)}`, 'error'));
