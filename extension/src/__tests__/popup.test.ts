@@ -20,12 +20,16 @@ const POPUP_ELEMENT_IDS = [
   'download-rule',
   'enhance-rule',
   'userHint',
+  'build-info',
 ] as const;
 
 
 const POPUP_HTML = `
   <header>
-    <h1>AegisCrawler 录制器</h1>
+    <div class="brand">
+      <h1>AegisCrawler 录制器</h1>
+      <span id="build-info" class="build-info hidden"></span>
+    </div>
     <div id="status" class="status-pill">就绪</div>
   </header>
 
@@ -808,6 +812,33 @@ describe('popup UI', () => {
     getButton('stop-recording').click();
     await flushPromises();
     expect(document.getElementById('recording-live')?.classList.contains('hidden')).toBe(true);
+  });
+
+  it('shows the build timestamp from build-info.json', async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ buildTime: '2026-09-22T06:30:00.000Z' }),
+    }));
+    (globalThis as Record<string, unknown>).fetch = fetchMock;
+    vi.resetModules();
+    document.body.innerHTML = POPUP_HTML;
+    await import('../popup');
+    await flushPromises();
+    const badge = document.getElementById('build-info');
+    expect(badge?.classList.contains('hidden')).toBe(false);
+    expect(badge?.textContent).toMatch(/^构建 \d{2}-\d{2} \d{2}:\d{2}$/);
+    delete (globalThis as Record<string, unknown>).fetch;
+  });
+
+  it('keeps the build badge hidden when build-info.json is unavailable', async () => {
+    const fetchMock = vi.fn(async () => ({ ok: false, json: async () => ({}) }));
+    (globalThis as Record<string, unknown>).fetch = fetchMock;
+    vi.resetModules();
+    document.body.innerHTML = POPUP_HTML;
+    await import('../popup');
+    await flushPromises();
+    expect(document.getElementById('build-info')?.classList.contains('hidden')).toBe(true);
+    delete (globalThis as Record<string, unknown>).fetch;
   });
 
   it('collapses multi-line exception text into a single-line status', async () => {

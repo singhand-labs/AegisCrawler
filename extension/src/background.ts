@@ -139,6 +139,9 @@ let serverKeys: ServerKeys = {};
 let activeRecording: ActiveRecordingSession | null = null;
 let lastCapabilities: RecordingCapabilities | null = null;
 const RECORDING_SESSION_KEY = 'oc_recording_session';
+// Once-a-minute self-wake while a recording is active; see
+// updateRecordingKeepAlive for why it exists.
+const RECORDING_KEEPALIVE_ALARM_NAME = 'recording-state-keepalive';
 // D-3: disk-backed checkpoint key per tab. The RECORDING_CHECKPOINT handler
 // writes here as defense-in-depth alongside IndexedDB + .session so a single
 // storage layer failing mid-write (or SW eviction losing .session) cannot
@@ -367,8 +370,27 @@ async function saveActiveRecording(session: ActiveRecordingSession | null): Prom
   activeRecording = session;
   recordingState = session ? 'recording' : 'idle';
   updateRecordingBadge(!!session);
+  updateRecordingKeepAlive(!!session);
   if (session) await chrome.storage.session.set({ [RECORDING_SESSION_KEY]: session });
   else await chrome.storage.session.remove(RECORDING_SESSION_KEY);
+}
+
+/** A once-a-minute alarm while a recording is active. It bounds how long a
+ *  dead service worker can stay unresponsive during a recording (message
+ *  sends wake it, but the cold-wake path occasionally hangs on some Chrome
+ *  builds) and self-heals the REC badge after eviction. */
+function updateRecordingKeepAlive(active: boolean): void {
+  try {
+    if (active) {
+      void chrome.alarms
+        .create(RECORDING_KEEPALIVE_ALARM_NAME, { periodInMinutes: 1 })
+        .catch(() => undefined);
+    } else {
+      void chrome.alarms.clear(RECORDING_KEEPALIVE_ALARM_NAME).catch(() => undefined);
+    }
+  } catch {
+    // Alarms unavailable in an exotic context: recording itself is unaffected.
+  }
 }
 
 /** Keep the toolbar icon badged for the whole recording lifetime so state is
@@ -870,15 +892,30 @@ async function getActiveTab(): Promise<ChromeTab | undefined> {
   return tab;
 }
 
-async function ensureContentScript(tabId: number): Promise<void> {
+/** Returns the injection error instead of throwing: callers decide whether a
+ *  failed redundant injection is fatal (the manifest auto-injected script may
+ *  already be listening). */
+async function ensureContentScript(tabId: number): Promise<Error | null> {
   try {
     await chrome.scripting.executeScript({
       target: { tabId },
       files: ['content.js'],
     });
+    return null;
   } catch (err) {
     console.warn('[background] content script injection failed:', err);
+    return err instanceof Error ? err : new Error(String(err));
   }
+}
+
+/** Map a raw Chrome injection failure onto an actionable Chinese message;
+ *  unknown errors keep their original text for supportability. */
+function mapInjectionError(err: Error): string {
+  const message = err.message || String(err);
+  if (/cannot access|chrome(url|:\/\/)|chrome-extension|devtools|edge:\/\/|about:|web store/i.test(message)) {
+    return '当前页面不支持录制，请切换到普通网页（http/https）后重试';
+  }
+  return message;
 }
 
 async function sendToContentScript(tabId: number, message: unknown): Promise<unknown> {
@@ -1667,14 +1704,26 @@ async function handleMessage(
       if (!tab?.id) {
         return { success: false, error: '没有活动标签页' };
       }
+      // Only ordinary web pages are recordable. Without host access to a URL
+      // (chrome://, other extensions' pages, the Web Store…), tab.url is
+      // undefined, so this also rejects every browser-internal target before
+      // any cryptic injection failure can surface.
+      const targetUrl = tab.url ?? tab.pendingUrl ?? '';
+      if (!/^https?:/i.test(targetUrl)) {
+        return { success: false, error: '当前页面不支持录制：请切换到普通网页（http/https）后再开始' };
+      }
       const options = await resolveRecordingOptions(message.payload);
       await recordingStore.remove();
       // D-3: clear any residual disk-backed checkpoint from a prior session
       // on this tab before starting fresh.
       await chrome.storage.local.remove(recordingCheckpointKey(tab.id)).catch(() => undefined);
       await saveActiveRecording({ tabId: tab.id, startedAt: Date.now(), options });
+      // Injection failures are only fatal when the content script is
+      // unreachable afterwards: a page that already auto-injected the script
+      // (manifest document_idle) can reject a redundant executeScript while
+      // still recording fine.
+      const injectionError = await ensureContentScript(tab.id);
       try {
-        await ensureContentScript(tab.id);
         const contentPayload = Object.keys(options).length > 0 ? options : message.payload;
         const csResponse = (await sendToContentScript(tab.id, { action: 'START_RECORDING', payload: contentPayload })) as
           | { success?: boolean; error?: string }
@@ -1687,10 +1736,8 @@ async function handleMessage(
         }
       } catch (error) {
         await saveActiveRecording(null);
-        return {
-          success: false,
-          error: `录制启动失败：${error instanceof Error ? error.message : String(error)}`,
-        };
+        const detail = injectionError ? mapInjectionError(injectionError) : error instanceof Error ? error.message : String(error);
+        return { success: false, error: `录制启动失败：${detail}` };
       }
       return { success: true, protocolVersion: options.protocolVersion ?? '1.0.0' };
     }
@@ -2777,6 +2824,13 @@ chrome.runtime.onConnect.addListener((port) => {
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === WIZARD_KEEP_ALIVE_ALARM_NAME) {
     // No-op: the alarm event itself keeps the service worker alive.
+  }
+  if (alarm.name === RECORDING_KEEPALIVE_ALARM_NAME) {
+    // Wake + self-heal: re-derive the REC badge from persisted session state
+    // so an evicted worker cannot leave stale badge state behind.
+    void loadActiveRecording()
+      .then((session) => updateRecordingBadge(!!session))
+      .catch(() => undefined);
   }
 });
 

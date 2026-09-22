@@ -43,6 +43,21 @@ h1 {
   letter-spacing: -0.01em;
 }
 
+.build-info {
+  margin-left: auto;
+  font-size: var(--ag-text-xs);
+  color: var(--ag-text-faint);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  border: 1px solid var(--ag-border);
+  border-radius: var(--ag-radius-pill);
+  padding: 2px 8px;
+}
+
+.build-info.hidden {
+  display: none;
+}
+
 h2 {
   margin: 0 0 10px;
   font-size: var(--ag-text-xs);

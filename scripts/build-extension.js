@@ -61,8 +61,26 @@ async function build() {
     console.log(`Copied: ${to}`);
   }
 
+  // Build fingerprint shown in the popup so a stale (not-yet-reloaded)
+  // extension build is recognizable at a glance.
+  const buildInfo = {
+    buildTime: new Date().toISOString(),
+    manifestVersion: JSON.parse(fs.readFileSync(path.join(projectRoot, 'extension/manifest.json'), 'utf8')).version,
+  };
+  fs.writeFileSync(path.join(outDir, 'build-info.json'), `${JSON.stringify(buildInfo, null, 2)}\n`);
+  console.log('Copied: build-info.json (generated)');
+
   // Copy all extension icons, including PNG variants required by the Chrome Web Store.
   copyDirRecursive(path.join(projectRoot, 'extension/icons'), path.join(outDir, 'icons'));
+
+  console.log(`
+⚠️  dist/extension has been rebuilt.
+   Chrome caches unpacked-extension code: open chrome://extensions and click
+   重新加载 (Reload) on "AegisCrawler 页面录制器" — or restart the browser —
+   before the new build takes effect. The popup shows the build time under
+   its title; if it does not match this timestamp, the old code is running.
+   Build timestamp: ${buildInfo.buildTime}
+`);
 }
 
 build().catch((err) => {

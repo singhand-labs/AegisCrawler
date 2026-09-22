@@ -317,10 +317,31 @@ function wireKeyToggles(): void {
   });
 }
 
+/** Show the running build's timestamp so a stale, not-yet-reloaded unpacked
+ *  build is recognizable next to a fresh dist/ rebuild. Purely informational:
+ *  any failure keeps the badge hidden. */
+function loadBuildInfo(): void {
+  const badge = getElement<HTMLElement>('build-info');
+  // Sandboxed/jsdom contexts may lack fetch; the badge is informational only.
+  if (!badge || typeof fetch !== 'function') return;
+  fetch(chrome.runtime.getURL('build-info.json'))
+    .then((response) => (response.ok ? response.json() : Promise.reject(new Error('no build-info'))))
+    .then((info: { buildTime?: string }) => {
+      if (!info?.buildTime) return;
+      const time = new Date(info.buildTime);
+      if (Number.isNaN(time.getTime())) return;
+      const pad = (n: number): string => String(n).padStart(2, '0');
+      badge.textContent = `构建 ${pad(time.getMonth() + 1)}-${pad(time.getDate())} ${pad(time.getHours())}:${pad(time.getMinutes())}`;
+      badge.classList.remove('hidden');
+    })
+    .catch(() => undefined);
+}
+
 function initPopup(): void {
   stopLiveIndicator();
   loadState().catch((err) => setStatus(`加载状态失败：${formatUserError(err)}`, 'error'));
   loadServerConfig().catch((err) => setStatus(`加载配置失败：${formatUserError(err)}`, 'error'));
+  loadBuildInfo();
   wireKeyToggles();
 
   getElement<HTMLButtonElement>('start-recording')?.addEventListener('click', () => {

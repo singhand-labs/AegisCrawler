@@ -339,6 +339,28 @@ describe('background service worker', () => {
       expect(badge.setBadgeText).toHaveBeenLastCalledWith({ text: '' });
     });
 
+    it('runs a keepalive alarm while recording and clears it on stop', async () => {
+      const alarms = chromeMock.mock.alarms;
+      await sendMessage({ action: 'START_RECORDING' });
+      expect(alarms.create).toHaveBeenCalledWith('recording-state-keepalive', { periodInMinutes: 1 });
+      await sendMessage({ action: 'STOP_RECORDING' });
+      expect(alarms.clear).toHaveBeenCalledWith('recording-state-keepalive');
+    });
+
+    it('self-heals the REC badge when the keepalive alarm fires', async () => {
+      const badge = chromeMock.mock.action;
+      if (!badge) throw new Error('action mock missing');
+      await sendMessage({ action: 'START_RECORDING' });
+      badge.setBadgeText.mockClear();
+      if (chromeMock.onAlarmListeners.length === 0) throw new Error('alarm listener not registered');
+      // Chrome delivers one alarm to every registered listener.
+      for (const listener of chromeMock.onAlarmListeners) {
+        await listener({ name: 'recording-state-keepalive' });
+      }
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(badge.setBadgeText).toHaveBeenLastCalledWith({ text: 'REC' });
+    });
+
     it('restores an active recording session from session storage', async () => {
       chromeMock.sessionStorage.oc_recording_session = {
         tabId: 42,
@@ -1192,9 +1214,42 @@ describe('background service worker', () => {
     });
 
     it('START_RECORDING succeeds even when content script injection fails', async () => {
+      // The manifest already auto-injects content.js at document_idle, so a
+      // redundant executeScript rejection must not block START when the
+      // content script answers afterwards.
       chromeMock.mock.scripting.executeScript.mockRejectedValueOnce(new Error('injection denied'));
       const response = (await sendMessage({ action: 'START_RECORDING' })) as { success: boolean };
       expect(response.success).toBe(true);
+    });
+
+    it('START_RECORDING rejects a non-recordable active tab before any injection', async () => {
+      chromeMock.mock.tabs.query.mockResolvedValueOnce([{ id: 77, url: 'chrome://settings/' }]);
+      const response = (await sendMessage({ action: 'START_RECORDING' })) as { success: boolean; error?: string };
+      expect(response.success).toBe(false);
+      expect(response.error).toContain('当前页面不支持录制');
+      expect(chromeMock.mock.scripting.executeScript).not.toHaveBeenCalled();
+      // The failed pre-check must not leave a half-created session behind.
+      const state = (await sendMessage({ action: 'GET_STATE' })) as { state: string };
+      expect(state.state).toBe('idle');
+    });
+
+    it('START_RECORDING rejects when the tab URL is hidden (no host permission)', async () => {
+      chromeMock.mock.tabs.query.mockResolvedValueOnce([{ id: 78 }] as unknown as { id: number; url: string }[]);
+      const response = (await sendMessage({ action: 'START_RECORDING' })) as { success: boolean; error?: string };
+      expect(response.success).toBe(false);
+      expect(response.error).toContain('当前页面不支持录制');
+    });
+
+    it('START_RECORDING maps an unreachable content script plus injection failure to Chinese', async () => {
+      chromeMock.mock.scripting.executeScript.mockRejectedValueOnce(
+        new Error('Cannot access a chrome:// URL "chrome-extension://x/"'),
+      );
+      chromeMock.mock.tabs.sendMessage.mockRejectedValueOnce(new Error('Could not establish connection. Receiving end does not exist.'));
+      const response = (await sendMessage({ action: 'START_RECORDING' })) as { success: boolean; error?: string };
+      expect(response.success).toBe(false);
+      expect(response.error).toContain('录制启动失败');
+      expect(response.error).toContain('当前页面不支持录制');
+      expect(response.error).not.toContain('Could not establish connection');
     });
 
     it('GET_LAST_RECORDING returns null when no recording exists', async () => {
