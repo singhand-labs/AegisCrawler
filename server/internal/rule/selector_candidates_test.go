@@ -1388,7 +1388,7 @@ func TestSelectorCatalogReconstructionRejectsInvalidOrUnsupportedVersion(t *test
 	)
 	for _, stored := range []string{
 		`not-json`,
-		`{"version":"selector-catalog-v6","catalogHash":"","candidates":[]}`,
+		`{"version":"selector-catalog-v999","catalogHash":"","candidates":[]}`,
 		`{"catalogHash":"","candidates":[]}`,
 	} {
 		if _, _, err := catalog.ReconstructProviderPrompt(stored, nil); !errors.Is(err, ErrSelectorCatalogUnavailable) {

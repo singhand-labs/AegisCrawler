@@ -23,10 +23,14 @@ import type {
   DomElementInfo,
   DomNode,
   DomSnapshot,
+  PageMark,
+  PageMarkRole,
   RecordingLimitKind,
   RecordingStopReason,
 } from '../../src/rule-generator/types';
 import { effectiveRole } from '../../src/rule-engine/aria-roles';
+import { PageMarkOverlay } from './marking/overlay';
+import type { PageMarkOverlayAdapter } from './marking/overlay';
 
 export type { RecorderOptions };
 
@@ -119,6 +123,7 @@ function createEmptyRecording(options: RecorderOptions = {}): PageAgentRecording
     snapshots: [],
   };
   if (version === '2.0.0') {
+    recording.marks = [];
     recording.meta.semanticDomVersion = '1';
     recording.meta.sanitizationVersion = 'extension-v2';
     recording.limits = {
@@ -173,6 +178,8 @@ interface ListenerEntry {
  * falls back to DOM event listeners otherwise.
  */
 const SESSION_STORAGE_KEY = '__ocRecordingState';
+const DEFAULT_MAX_MARKS = 24;
+const MAX_MARK_NOTE_CHARS = 200;
 
 interface PersistedRecordingState {
   version: number;
@@ -227,6 +234,7 @@ export class ContentRecorder {
   private stopping = false;
   private stopPromise: Promise<PageAgentRecording> | null = null;
   private backgroundResumePromise: Promise<boolean> | null = null;
+  private markOverlay: PageMarkOverlay | null = null;
   // H-1: incremental byte-length tracking. Maintained per-push to avoid the
   // O(n²) cost of JSON.stringify(this.recording) on every event. Recalibrated
   // to the exact full-serialization value at checkpoint intervals.
@@ -303,6 +311,7 @@ export class ContentRecorder {
 
     this.attachNavigationListeners();
     this.wrapRecordingArrays(this.recording);
+    this.attachMarkOverlay();
     // H-1: initialize incremental byte counter.
     this.recalibrateByteLength();
     this.startSelectorCleanup();
@@ -397,6 +406,9 @@ export class ContentRecorder {
       this.recording = this.controllerRecorder.getRecording();
       this.controllerRecorder = null;
     }
+
+    this.markOverlay?.unmount();
+    this.markOverlay = null;
 
     this.detachAllListeners();
 
@@ -641,12 +653,31 @@ export class ContentRecorder {
       if (!parsed.recording || typeof parsed.recording !== 'object') return null;
       const rec = parsed.recording as unknown as Record<string, unknown>;
       if (!Array.isArray(rec.events) || !Array.isArray(rec.snapshots)) return null;
+      if (rec.marks !== undefined && !this.validPersistedMarks(rec.marks)) {
+        (rec as { marks?: unknown }).marks = [];
+      }
       if (!rec.meta || typeof rec.meta !== 'object') return null;
       return parsed;
     } catch (err) {
       console.warn('[ContentRecorder] failed to read persisted recording state:', err);
       return null;
     }
+  }
+
+  private validPersistedMarks(value: unknown): boolean {
+    if (!Array.isArray(value)) return false;
+    if (value.length > (this.options.maxMarks ?? DEFAULT_MAX_MARKS)) return false;
+    return value.every((item) => {
+      const mark = item as Partial<PageMark> | null;
+      return !!mark
+        && typeof mark.id === 'string'
+        && typeof mark.timestamp === 'number'
+        && typeof mark.url === 'string'
+        && ['listItem', 'field', 'nextPage', 'input', 'exclude'].includes(String(mark.role))
+        && typeof mark.note === 'string'
+        && mark.note.length <= MAX_MARK_NOTE_CHARS
+        && typeof mark.element?.selector === 'string';
+    });
   }
 
   resumeIfNeeded(): boolean {
@@ -826,6 +857,9 @@ export class ContentRecorder {
       for (const snapshot of this.recording.snapshots) {
         newRecording.snapshots.push(snapshot);
       }
+      for (const mark of this.recording.marks ?? []) {
+        this.controllerRecorder.addMark(mark);
+      }
       this.recording = newRecording;
     } else {
       this.attachDomListeners();
@@ -833,6 +867,7 @@ export class ContentRecorder {
 
     this.attachNavigationListeners();
     this.wrapRecordingArrays(this.recording);
+    this.attachMarkOverlay();
     // H-1: initialize incremental byte counter.
     this.recalibrateByteLength();
     this.startSelectorCleanup();
@@ -862,6 +897,98 @@ export class ContentRecorder {
       delete snapshot.domTree;
     }
     return recording;
+  }
+
+  addPageMark(mark: PageMark): PageMark {
+    if (!this.recording || !this.recordingFlag) {
+      throw new Error('recording is not active');
+    }
+    this.validatePageMark(mark);
+    if (!this.recording.marks) {
+      this.recording.marks = [];
+    }
+    const existingIndex = this.recording.marks.findIndex((item) => item.id === mark.id);
+    if (existingIndex >= 0) {
+      const previous = this.recording.marks[existingIndex];
+      this.currentByteLength -= ContentRecorder.computeItemByteLength(previous);
+      this.recording.marks[existingIndex] = mark;
+      this.currentByteLength += ContentRecorder.computeItemByteLength(mark);
+    } else {
+      const maxMarks = this.options.maxMarks ?? DEFAULT_MAX_MARKS;
+      if (this.recording.marks.length >= maxMarks) {
+        throw new Error(`maximum mark count of ${maxMarks} reached`);
+      }
+      this.recording.marks.push(mark);
+      this.currentByteLength += ContentRecorder.computeItemByteLength(mark);
+    }
+    if (this.controllerRecorder) {
+      this.controllerRecorder.addMark(mark);
+    }
+    this.evaluateLimits();
+    this.persistState();
+    this.markOverlay?.refresh();
+    return mark;
+  }
+
+  removePageMark(id: string): boolean {
+    if (!this.recording?.marks) return false;
+    const index = this.recording.marks.findIndex((item) => item.id === id);
+    if (index < 0) return false;
+    const [removed] = this.recording.marks.splice(index, 1);
+    this.currentByteLength -= ContentRecorder.computeItemByteLength(removed);
+    this.controllerRecorder?.removeMark(id);
+    this.persistState();
+    this.markOverlay?.refresh();
+    return true;
+  }
+
+  private listPageMarks(): PageMark[] {
+    return this.recording?.marks ?? [];
+  }
+
+  private attachMarkOverlay(): void {
+    if (!IS_TOP_FRAME || !this.isV2() || !this.recordingFlag || this.markOverlay) return;
+    const adapter: PageMarkOverlayAdapter = {
+      buildMarkForElement: (element, role, note) => this.buildPageMark(element, role, note),
+      saveMark: (mark) => this.addPageMark(mark),
+      removeMark: (id) => this.removePageMark(id),
+      listMarks: () => this.listPageMarks(),
+    };
+    this.markOverlay = new PageMarkOverlay(adapter);
+    this.markOverlay.mount();
+  }
+
+  private buildPageMark(element: Element, role: PageMarkRole, note: string): PageMark {
+    const index = this.getElementIndex(element);
+    const selector = this.inferSelector(element);
+    const lastSnapshot = this.recording?.snapshots[this.recording.snapshots.length - 1];
+    return {
+      id: this.generateMarkId(),
+      timestamp: Date.now(),
+      url: sanitizeRecordingUrl(window.location.href),
+      role,
+      note: note.slice(0, MAX_MARK_NOTE_CHARS),
+      element: this.buildDomElementInfo(element, index, selector),
+      actionIndex: this.recording?.events.length,
+      snapshotSequence: lastSnapshot?.sequence,
+      state: sanitizeRecordingUrl(window.location.href),
+    };
+  }
+
+  private generateMarkId(): string {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return crypto.randomUUID();
+    }
+    return `mark-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  }
+
+  private validatePageMark(mark: PageMark): void {
+    if (!mark || typeof mark !== 'object' || !mark.id || !mark.role || !mark.element?.selector) {
+      throw new Error('page mark is missing required id, role, or selector evidence');
+    }
+    if (mark.note.length > MAX_MARK_NOTE_CHARS) {
+      throw new Error(`page mark note exceeds ${MAX_MARK_NOTE_CHARS} characters`);
+    }
   }
 
   isRecording(): boolean {
@@ -1760,7 +1887,10 @@ export class ContentRecorder {
       snapshot.domTree = localTree ?? undefined;
     }
 
-    this.recording!.snapshots.push(snapshot);
+    if (!this.recording) {
+      return snapshot;
+    }
+    this.recording.snapshots.push(snapshot);
     return snapshot;
   }
 

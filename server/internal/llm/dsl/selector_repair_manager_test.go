@@ -77,7 +77,7 @@ func (c *wrongCohortSelectorRepairCompleter) Complete(
 	steps := rule["steps"].([]any)
 	target := steps[0].(map[string]any)["target"].(map[string]any)
 	c.correctRowID, _ = target["rowCandidateId"].(string)
-	marker := `{"version":"selector-catalog-v5"`
+	marker := `{"version":"selector-catalog-v6"`
 	index := strings.Index(request.User, marker)
 	if index < 0 {
 		c.t.Fatal("generation prompt omitted selector catalog")

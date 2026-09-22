@@ -29,6 +29,11 @@
       "type": "array",
       "items": { "$ref": "#/definitions/snapshot" }
     },
+    "marks": {
+      "type": "array",
+      "maxItems": 24,
+      "items": { "$ref": "#/definitions/pageMark" }
+    },
     "limits": { "$ref": "#/definitions/limits" },
     "warnings": {
       "type": "array",
@@ -246,6 +251,22 @@
         "url": { "type": "string" },
         "status": { "enum": ["captured", "unavailable", "error"] },
         "error": { "type": "string" }
+      }
+    },
+    "pageMark": {
+      "type": "object",
+      "required": ["id", "timestamp", "url", "role", "note", "element"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "timestamp": { "type": "number" },
+        "url": { "type": "string" },
+        "role": { "enum": ["listItem", "field", "nextPage", "input", "exclude"] },
+        "note": { "type": "string", "maxLength": 200 },
+        "element": { "$ref": "#/definitions/elementInfo" },
+        "actionIndex": { "type": "integer", "minimum": 0 },
+        "snapshotSequence": { "type": "integer", "minimum": 0 },
+        "state": { "type": "string" },
+        "canonicalId": { "type": "string" }
       }
     },
     "elementInfo": {

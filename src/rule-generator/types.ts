@@ -7,12 +7,34 @@ export interface PageAgentRecording {
   meta: RecordingMeta;
   events: PageAgentEvent[];
   snapshots: DomSnapshot[];
+  /** User-authored, bounded collection-intent marks captured during recording. */
+  marks?: PageMark[];
   /** Client-enforced limits for semantic recording v2. */
   limits?: RecordingLimits;
   /** Non-fatal warnings emitted before a configured recording limit. */
   warnings?: RecordingWarning[];
   /** Why and when a completed v2 recording stopped. */
   termination?: RecordingTermination;
+}
+
+export type PageMarkRole = 'listItem' | 'field' | 'nextPage' | 'input' | 'exclude';
+
+export interface PageMark {
+  id: string;
+  timestamp: number;
+  url: string;
+  role: PageMarkRole;
+  /** User-authored intent note. It is not page evidence and must stay bounded. */
+  note: string;
+  element: DomElementInfo;
+  /** Event count at the time the mark was captured, used for prompt timeline placement. */
+  actionIndex?: number;
+  /** Semantic snapshot sequence that authenticated the marked element, when available. */
+  snapshotSequence?: number;
+  /** Server canonical page state (usually derived from the marked snapshot URL), when available. */
+  state?: string;
+  /** Server-side stable id derived without note/page text; used in selector-catalog metadata. */
+  canonicalId?: string;
 }
 
 export interface RecordingMeta {

@@ -71,6 +71,7 @@ type SelectorEvidenceCatalog struct {
 	promptCatalogHash    string
 	promptTargets        map[string]*providerTargetEvidence
 	promptFields         map[string]*providerFieldEvidence
+	userMarkedCandidates []SelectorEvidenceCandidate
 }
 
 type SelectorEvidenceCandidate struct {
@@ -79,6 +80,9 @@ type SelectorEvidenceCandidate struct {
 	SnapshotSequences []int    `json:"snapshotSequences"`
 	Cardinalities     []int    `json:"cardinalities"`
 	RelativeSelectors []string `json:"relativeSelectors,omitempty"`
+	UserMarked        bool     `json:"userMarked,omitempty"`
+	MarkRole          string   `json:"markRole,omitempty"`
+	MarkID            string   `json:"markId,omitempty"`
 }
 
 type SelectorEvidenceReport struct {
@@ -181,7 +185,65 @@ func BuildSelectorEvidenceCatalog(recording map[string]any) (*SelectorEvidenceCa
 	catalog.Candidates = boundSelectorEvidenceCandidates(
 		derived, catalog.snapshots, maxSelectorCatalogCandidates,
 	)
+	catalog.userMarkedCandidates = buildUserMarkedSelectorCandidates(recording, catalog.snapshots)
 	return catalog, nil
+}
+
+func buildUserMarkedSelectorCandidates(recording map[string]any, snapshots []selectorEvidenceSnapshot) []SelectorEvidenceCandidate {
+	encoded, err := json.Marshal(recording["marks"])
+	if err != nil || len(encoded) == 0 || string(encoded) == "null" {
+		return nil
+	}
+	var marks []models.PageMark
+	if err := json.Unmarshal(encoded, &marks); err != nil {
+		return nil
+	}
+	result := make([]SelectorEvidenceCandidate, 0, len(marks))
+	seen := map[string]bool{}
+	for _, mark := range marks {
+		if mark.Role == models.PageMarkRoleExclude || strings.TrimSpace(mark.Element.Selector) == "" {
+			continue
+		}
+		selector := strings.TrimSpace(mark.Element.Selector)
+		matcher, err := compileBrowserSelector(selector)
+		if err != nil || isPositionalSelector(selector) || isVolatileSelector(selector) {
+			continue
+		}
+		state := strings.TrimSpace(mark.State)
+		if state == "" {
+			state = selectorStateKey(mark.URL)
+		}
+		sequences := []int{}
+		cardinalities := []int{}
+		for _, snapshot := range snapshots {
+			if snapshot.state != state {
+				continue
+			}
+			nodes := cascadia.QueryAll(snapshot.root, matcher)
+			if len(nodes) == 0 {
+				continue
+			}
+			sequences = append(sequences, snapshot.sequence)
+			cardinalities = append(cardinalities, len(nodes))
+		}
+		if len(sequences) == 0 {
+			continue
+		}
+		markID := strings.TrimSpace(mark.CanonicalID)
+		if markID == "" {
+			markID = strings.TrimSpace(mark.ID)
+		}
+		key := state + "\x00" + selector + "\x00" + string(mark.Role) + "\x00" + markID
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		result = append(result, SelectorEvidenceCandidate{
+			Selector: selector, State: state, SnapshotSequences: sequences, Cardinalities: cardinalities,
+			UserMarked: true, MarkRole: string(mark.Role), MarkID: markID,
+		})
+	}
+	return result
 }
 
 // ValidateAndStabilizeGeneratedExtractionSelectors validates generated

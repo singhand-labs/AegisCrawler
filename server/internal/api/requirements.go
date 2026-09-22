@@ -4,11 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"strconv"
 
-	llmrequirement "github.com/singhand-labs/AegisCrawler/internal/llm/requirement"
 	"github.com/singhand-labs/AegisCrawler/internal/llm/redact"
+	llmrequirement "github.com/singhand-labs/AegisCrawler/internal/llm/requirement"
 	"github.com/singhand-labs/AegisCrawler/internal/models"
 	"github.com/singhand-labs/AegisCrawler/internal/store"
 	"go.uber.org/zap"
@@ -24,6 +25,10 @@ type requirementManager interface {
 	RetryJob(context.Context, string) error
 	GetRequirement(context.Context, string) (*models.CollectionRequirement, error)
 	ConfirmRequirement(context.Context, string) (*models.CollectionRequirement, error)
+}
+
+type requirementCandidateInputManager interface {
+	SubmitCandidatesWithInput(context.Context, string, llmrequirement.CandidateInput) (*models.RequirementJob, error)
 }
 
 func (h *Handler) requirementWorkflowAvailable(w http.ResponseWriter) bool {
@@ -55,8 +60,25 @@ func (h *Handler) CreateCandidateRequirementJob(w http.ResponseWriter, r *http.R
 	if !h.requirementWorkflowAvailable(w) {
 		return
 	}
+	var request CreateRequirementCandidatesRequest
+	if r.Body != nil {
+		decoder := json.NewDecoder(r.Body)
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&request); err != nil && !errors.Is(err, io.EOF) {
+			writeError(w, http.StatusBadRequest, "BAD_REQUEST", "invalid requirement candidate request")
+			return
+		}
+	}
 	recordingID := r.PathValue("id")
-	job, err := h.requirements.SubmitCandidates(r.Context(), recordingID)
+	var job *models.RequirementJob
+	var err error
+	if withInput, ok := h.requirements.(requirementCandidateInputManager); ok {
+		job, err = withInput.SubmitCandidatesWithInput(r.Context(), recordingID, llmrequirement.CandidateInput{
+			MarksOverride: request.MarksOverride,
+		})
+	} else {
+		job, err = h.requirements.SubmitCandidates(r.Context(), recordingID)
+	}
 	if err != nil {
 		h.writeRequirementSubmissionError(r.Context(), w, err, recordingID, nil)
 		return
@@ -99,6 +121,7 @@ func (h *Handler) CreateNormalizationRequirementJob(w http.ResponseWriter, r *ht
 	job, err := h.requirements.SubmitNormalization(r.Context(), recordingID, llmrequirement.NormalizationInput{
 		Requirement: request.Requirement, CustomText: request.CustomText,
 		CandidateJobID: request.CandidateJobID, CandidateID: request.CandidateID,
+		MarksOverride: request.MarksOverride,
 	})
 	if err != nil {
 		h.writeRequirementSubmissionError(r.Context(), w, err, recordingID, redactedPayload(&request))
@@ -395,6 +418,7 @@ func redactedPayload(req *NormalizeRequirementRequest) map[string]any {
 		"customText":     redact.String(req.CustomText),
 		"candidateJobId": req.CandidateJobID,
 		"candidateId":    req.CandidateID,
+		"marksOverride":  redact.Any(req.MarksOverride),
 	}
 }
 

@@ -100,6 +100,29 @@ func TestBuildPromptChunksIncludesEverySnapshotAndEventExactlyOnce(t *testing.T)
 	}
 }
 
+func TestBuildPromptChunksIncludesUserMarksAsIntentEvidence(t *testing.T) {
+	recording := map[string]any{
+		"snapshots": []any{map[string]any{"actionIndex": 0, "phase": "before-action", "html": "snapshot"}},
+		"events":    []any{map[string]any{"type": "click", "selector": ".price"}},
+		"marks": []any{map[string]any{
+			"id": "mark-1", "canonicalId": "m_price", "timestamp": float64(3), "role": "field",
+			"note": "price field", "actionIndex": float64(0), "snapshotSequence": float64(0),
+			"element": map[string]any{"tagName": "span", "selector": ".price", "text": "$10"},
+		}},
+	}
+	chunks, _, err := buildPromptChunks(recording, 200)
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := ""
+	for _, chunk := range chunks {
+		joined += chunk.Content
+	}
+	if !strings.Contains(joined, `"kind":"mark"`) || !strings.Contains(joined, "price field") || !strings.Contains(joined, "m_price") {
+		t.Fatalf("mark intent evidence was not included in prompt chunks: %s", joined)
+	}
+}
+
 func TestGenerateCandidatesAnalyzesAllChunksThenSynthesizesExactlyThree(t *testing.T) {
 	responseJSON := candidateResponse(t)
 	fake := &fakeCompleter{}

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import type { PageAgentRecording, Rule } from '../../../src/rule-generator';
+import type { PageAgentRecording, PageMark, Rule } from '../../../src/rule-generator';
 
 function createChromeMock() {
   const listeners: Array<(message: unknown, sender: unknown, sendResponse: (response?: unknown) => void) => boolean | void> = [];
@@ -272,6 +272,28 @@ describe('background service worker', () => {
       recording.termination = { reason: 'user', message: 'done', timestamp: 2, complete: true };
     }
     return recording;
+  }
+
+  function pageMark(overrides: Partial<PageMark> = {}): PageMark {
+    return {
+      id: 'mark-1',
+      timestamp: 3,
+      url: 'https://example.com/',
+      role: 'field',
+      note: '商品标题',
+      element: {
+        index: 1,
+        tagName: 'span',
+        selector: '.product-title',
+        stableSelector: '.product-title',
+        text: 'Example product',
+        boundingRect: { x: 1, y: 2, width: 100, height: 20 },
+      },
+      actionIndex: 1,
+      snapshotSequence: 1,
+      state: 'https://example.com/',
+      ...overrides,
+    };
   }
 
   async function configureRecordingV2(fetchMock: ReturnType<typeof vi.fn>): Promise<void> {
@@ -1329,6 +1351,40 @@ describe('background service worker', () => {
   });
 
   describe('intent prediction and confirmed upload', () => {
+    it('updates persisted recording marks and clears stale requirement workflow state', async () => {
+      const fetchMock = global.fetch as ReturnType<typeof vi.fn>;
+      await configureRecordingV2(fetchMock);
+      const recording = makeV2Recording();
+      recording.meta.serverRecordingId = 'recording-update-marks-1';
+      recording.marks = [pageMark({ note: '旧备注' })];
+      chromeMock.mock.tabs.sendMessage.mockImplementation(async (_tabId: number, message: unknown) => {
+        if ((message as { action?: string }).action === 'STOP_RECORDING') return { recording };
+        return { success: true };
+      });
+      await sendMessage({ action: 'START_RECORDING' });
+      await sendMessage({ action: 'STOP_RECORDING' });
+      chromeMock.sessionStorage.oc_requirement_candidate_job = { recordingId: 'recording-update-marks-1', jobId: 'candidate-stale' };
+      chromeMock.sessionStorage.oc_requirement_normalize_job = { recordingId: 'recording-update-marks-1', jobId: 'normalize-stale' };
+      chromeMock.sessionStorage.oc_dsl_workflow = { workflowId: 'workflow-stale' };
+
+      const updatedMarks = [pageMark({ note: '新备注' })];
+      await expect(sendMessage({ action: 'UPDATE_RECORDING_MARKS', payload: { marks: updatedMarks } })).resolves.toEqual({
+        success: true,
+        marks: updatedMarks,
+      });
+      await expect(sendMessage({ action: 'GET_LAST_RECORDING' })).resolves.toMatchObject({
+        recording: { marks: updatedMarks },
+      });
+      expect(chromeMock.sessionStorage.oc_requirement_candidate_job).toBeUndefined();
+      expect(chromeMock.sessionStorage.oc_requirement_normalize_job).toBeUndefined();
+      expect(chromeMock.sessionStorage.oc_dsl_workflow).toBeUndefined();
+
+      await expect(sendMessage({ action: 'UPDATE_RECORDING_MARKS', payload: { marks: [{ id: 'bad' }] } })).resolves.toEqual({
+        success: false,
+        error: 'invalid page marks',
+      });
+    });
+
     it('runs the durable requirement workflow by recording id and resumes the candidate job', async () => {
       const fetchMock = global.fetch as ReturnType<typeof vi.fn>;
       await configureRecordingV2(fetchMock);
@@ -1366,8 +1422,8 @@ describe('background service worker', () => {
       const submitCall = fetchMock.mock.calls.find(([url]) => String(url).endsWith('/api/v1/recordings/recording-workflow-1/requirement-jobs'));
       expect(submitCall?.[1]).toMatchObject({ method: 'POST', body: '{}' });
       expect(String(submitCall?.[1].body)).not.toContain('snapshots');
-      expect(chromeMock.sessionStorage.oc_requirement_candidate_job).toEqual({
-        recordingId: 'recording-workflow-1', jobId: 'candidate-job-1',
+      expect(chromeMock.sessionStorage.oc_requirement_candidate_job).toMatchObject({
+        recordingId: 'recording-workflow-1', marksHash: expect.any(String), jobId: 'candidate-job-1',
       });
 
       fetchMock.mockResolvedValueOnce({
@@ -1383,6 +1439,107 @@ describe('background service worker', () => {
       const resumeCalls = fetchMock.mock.calls.slice(callsBeforeResume);
       expect(resumeCalls.some(([url]) => String(url).endsWith('/api/v1/recordings/recording-workflow-1/requirement-jobs'))).toBe(false);
       expect(resumeCalls.some(([url]) => String(url).endsWith('/api/v1/requirement-jobs/candidate-job-1'))).toBe(true);
+    });
+
+    it('sends page marks only when the server advertises pageMarks and invalidates stale candidate jobs', async () => {
+      const fetchMock = global.fetch as ReturnType<typeof vi.fn>;
+      await configureRecordingV2(fetchMock);
+      const recording = makeV2Recording();
+      recording.meta.serverRecordingId = 'recording-marks-1';
+      recording.marks = [pageMark()];
+      chromeMock.mock.tabs.sendMessage.mockImplementation(async (_tabId: number, message: unknown) => {
+        if ((message as { action?: string }).action === 'STOP_RECORDING') return { recording };
+        return { success: true };
+      });
+      await sendMessage({ action: 'START_RECORDING' });
+      await sendMessage({ action: 'STOP_RECORDING' });
+
+      fetchMock.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ features: { workflowV2: true, pageMarks: true } }) });
+      fetchMock.mockResolvedValueOnce({ ok: true, status: 202, json: async () => ({ job: { id: 'marks-job-1', status: 'pending' } }) });
+      fetchMock.mockResolvedValueOnce({
+        ok: true, status: 200, json: async () => ({
+          job: { id: 'marks-job-1', recordingId: 'recording-marks-1', status: 'completed', source: 'llm', result: { candidates: [] } },
+        }),
+      });
+      await expect(sendMessage({ action: 'GET_REQUIREMENT_WORKFLOW', payload: { startCandidates: true } })).resolves.toMatchObject({
+        success: true,
+        workflowV2: true,
+      });
+      const markedSubmit = fetchMock.mock.calls.find(([url]) => String(url).endsWith('/api/v1/recordings/recording-marks-1/requirement-jobs'));
+      expect(JSON.parse(markedSubmit?.[1].body as string)).toEqual({ marksOverride: recording.marks });
+      const firstStoredJob = chromeMock.sessionStorage.oc_requirement_candidate_job as { marksHash?: string; jobId?: string };
+      expect(firstStoredJob).toMatchObject({ jobId: 'marks-job-1', marksHash: expect.any(String) });
+
+      recording.marks = [pageMark({ note: '更新后的商品标题' })];
+      fetchMock.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ features: { workflowV2: true, pageMarks: true } }) });
+      fetchMock.mockResolvedValueOnce({ ok: true, status: 202, json: async () => ({ job: { id: 'marks-job-2', status: 'pending' } }) });
+      fetchMock.mockResolvedValueOnce({
+        ok: true, status: 200, json: async () => ({
+          job: { id: 'marks-job-2', recordingId: 'recording-marks-1', status: 'completed', source: 'llm', result: { candidates: [] } },
+        }),
+      });
+      const callsBeforeChangedMarks = fetchMock.mock.calls.length;
+      await expect(sendMessage({ action: 'GET_REQUIREMENT_WORKFLOW', payload: { startCandidates: true } })).resolves.toMatchObject({
+        success: true,
+        workflowV2: true,
+      });
+      const changedMarkCalls = fetchMock.mock.calls.slice(callsBeforeChangedMarks);
+      expect(changedMarkCalls.some(([url]) => String(url).endsWith('/api/v1/requirement-jobs/marks-job-1'))).toBe(false);
+      expect(changedMarkCalls.some(([url]) => String(url).endsWith('/api/v1/recordings/recording-marks-1/requirement-jobs'))).toBe(true);
+      expect(chromeMock.sessionStorage.oc_requirement_candidate_job).toMatchObject({ jobId: 'marks-job-2', marksHash: expect.any(String) });
+      expect((chromeMock.sessionStorage.oc_requirement_candidate_job as { marksHash?: string }).marksHash).not.toBe(firstStoredJob.marksHash);
+
+      recording.marks = [pageMark({ id: 'mark-2', note: '不会发送' })];
+      fetchMock.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ features: { workflowV2: true, pageMarks: false } }) });
+      fetchMock.mockResolvedValueOnce({ ok: true, status: 202, json: async () => ({ job: { id: 'marks-job-3', status: 'pending' } }) });
+      fetchMock.mockResolvedValueOnce({
+        ok: true, status: 200, json: async () => ({
+          job: { id: 'marks-job-3', recordingId: 'recording-marks-1', status: 'completed', source: 'llm', result: { candidates: [] } },
+        }),
+      });
+      await expect(sendMessage({ action: 'GET_REQUIREMENT_WORKFLOW', payload: { startCandidates: true } })).resolves.toMatchObject({ success: true });
+      const unmarkedSubmit = [...fetchMock.mock.calls]
+        .reverse()
+        .find(([url]) => String(url).endsWith('/api/v1/recordings/recording-marks-1/requirement-jobs'));
+      expect(JSON.parse(unmarkedSubmit?.[1].body as string)).toEqual({});
+    });
+
+    it('sends page marks to normalization and stores the matching marks hash', async () => {
+      const fetchMock = global.fetch as ReturnType<typeof vi.fn>;
+      await configureRecordingV2(fetchMock);
+      const recording = makeV2Recording();
+      recording.meta.serverRecordingId = 'recording-normalize-marks-1';
+      recording.marks = [pageMark({ role: 'listItem', note: '每个商品卡片' })];
+      chromeMock.mock.tabs.sendMessage.mockImplementation(async (_tabId: number, message: unknown) => {
+        if ((message as { action?: string }).action === 'STOP_RECORDING') return { recording };
+        return { success: true };
+      });
+      await sendMessage({ action: 'START_RECORDING' });
+      await sendMessage({ action: 'STOP_RECORDING' });
+
+      fetchMock.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ features: { workflowV2: true, pageMarks: true } }) });
+      await sendMessage({ action: 'GET_REQUIREMENT_WORKFLOW', payload: { startCandidates: false } });
+
+      const requirement = { title: 'Collect products' };
+      fetchMock.mockResolvedValueOnce({ ok: true, status: 202, json: async () => ({ job: { id: 'normalize-marks-job-1', status: 'pending' } }) });
+      fetchMock.mockResolvedValueOnce({
+        ok: true, status: 200, json: async () => ({
+          job: {
+            id: 'normalize-marks-job-1', recordingId: 'recording-normalize-marks-1', status: 'completed', source: 'manual',
+            requirementId: 'requirement-marks-1', result: { requirement },
+          },
+        }),
+      });
+
+      await expect(sendMessage({ action: 'NORMALIZE_REQUIREMENT', payload: { requirement } })).resolves.toMatchObject({
+        success: true,
+        requirementId: 'requirement-marks-1',
+      });
+      const normalizeCall = fetchMock.mock.calls.find(([url]) => String(url).endsWith('/requirement-jobs/normalize'));
+      expect(JSON.parse(normalizeCall?.[1].body as string)).toEqual({ requirement, marksOverride: recording.marks });
+      expect(chromeMock.sessionStorage.oc_requirement_normalize_job).toMatchObject({
+        recordingId: 'recording-normalize-marks-1', marksHash: expect.any(String), jobId: 'normalize-marks-job-1',
+      });
     });
 
     it('GET_REQUIREMENT_WORKFLOW with resumeJobId polls without POSTing a new job', async () => {
@@ -2259,8 +2416,8 @@ describe('background service worker', () => {
       };
       expect(generated).toMatchObject({ success: true, workflowV2: true });
       expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith('/api/v1/recordings/recording-probe-1/requirement-jobs'))).toBe(true);
-      expect(chromeMock.sessionStorage.oc_requirement_candidate_job).toEqual({
-        recordingId: 'recording-probe-1', jobId: 'probe-job-1',
+      expect(chromeMock.sessionStorage.oc_requirement_candidate_job).toMatchObject({
+        recordingId: 'recording-probe-1', marksHash: expect.any(String), jobId: 'probe-job-1',
       });
 
       // A later probe resumes the stored job instead of creating a new one.

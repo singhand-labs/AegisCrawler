@@ -117,10 +117,11 @@ Then in Chrome: *Extensions → Manage → Load unpacked* → select `dist/exten
 ### 3. Record a rule
 
 1. Open the target site, click **开始录制** (Start recording) in the extension popup.
-2. Perform the actions you want to collect; click **停止录制** (Stop).
-3. The intent wizard opens: confirm your goal, preview the generated DSL
+2. While recording, optionally click the floating **标注采集意图** button or press `Alt+M` to circle page elements and add plain-language notes such as “商品标题字段” or “排除广告区域”. These marks help the requirement and DSL LLM understand what you intend to collect without storing screenshots.
+3. Perform the actions you want to collect; click **停止录制** (Stop).
+4. The intent wizard opens: review or edit the recorded marks, confirm your goal, preview the generated DSL
    (steps + YAML), watch a full replay validate it, then save the rule.
-4. Configure the server base URL and your Admin API key in the popup before
+5. Configure the server base URL and your Admin API key in the popup before
    uploading.
 
 ### 4. Run it as a task

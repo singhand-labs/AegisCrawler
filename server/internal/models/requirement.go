@@ -128,6 +128,7 @@ type CollectionRequirement struct {
 	Status      CollectionRequirementStatus `json:"status"`
 	ContentHash string                      `json:"contentHash"`
 	Requirement CollectionRequirementSpec   `json:"requirement"`
+	Marks       []PageMark                  `json:"marks,omitempty"`
 	Owner       string                      `json:"owner"`
 	CreatedAt   time.Time                   `json:"createdAt"`
 	UpdatedAt   time.Time                   `json:"updatedAt"`

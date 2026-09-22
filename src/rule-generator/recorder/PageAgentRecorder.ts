@@ -1,4 +1,4 @@
-import type { PageAgentRecording, PageAgentEvent, DomElementInfo } from '../types';
+import type { PageAgentRecording, PageAgentEvent, DomElementInfo, PageMark } from '../types';
 import { effectiveRole } from '../../rule-engine/aria-roles';
 
 export interface RecorderOptions {
@@ -13,6 +13,8 @@ export interface RecorderOptions {
   maxDomTreeDepth?: number;
   maxDomTreeNodes?: number;
   maxDomTreeTextLength?: number;
+  /** Maximum number of user-authored page marks retained in a v2 recording. */
+  maxMarks?: number;
   /** When true, the recorder will not persist state to sessionStorage. */
   disableCrossPagePersistence?: boolean;
   /**
@@ -35,6 +37,9 @@ export interface PageControllerLike {
   scrollHorizontally(options: { right: boolean; pixels: number; index?: number }): Promise<any>;
   executeJavascript(script: string): Promise<any>;
 }
+
+const DEFAULT_MAX_MARKS = 24;
+const MAX_MARK_NOTE_CHARS = 200;
 
 /**
  * Records interactions made through a PageController-like object.
@@ -197,6 +202,50 @@ export class PageAgentRecorder {
     const classes = Array.from(el.classList).join('.');
     if (classes) return `${el.tagName.toLowerCase()}.${classes}`;
     return el.tagName.toLowerCase();
+  }
+
+  addMark(mark: PageMark): PageMark {
+    this.validateMark(mark);
+    const marks = this.ensureMarks();
+    const existingIndex = marks.findIndex((item) => item.id === mark.id);
+    if (existingIndex >= 0) {
+      marks[existingIndex] = mark;
+      return mark;
+    }
+    const maxMarks = this.options.maxMarks ?? DEFAULT_MAX_MARKS;
+    if (marks.length >= maxMarks) {
+      throw new Error(`maximum mark count of ${maxMarks} reached`);
+    }
+    marks.push(mark);
+    return mark;
+  }
+
+  removeMark(id: string): boolean {
+    const marks = this.recording.marks;
+    if (!marks) return false;
+    const index = marks.findIndex((item) => item.id === id);
+    if (index < 0) return false;
+    marks.splice(index, 1);
+    return true;
+  }
+
+  private ensureMarks(): PageMark[] {
+    if (!this.recording.marks) {
+      this.recording.marks = [];
+    }
+    return this.recording.marks;
+  }
+
+  private validateMark(mark: PageMark): void {
+    if (!mark || typeof mark !== 'object') {
+      throw new Error('page mark must be an object');
+    }
+    if (!mark.id || !mark.element || !mark.element.selector || !mark.role) {
+      throw new Error('page mark is missing required id, role, or selector evidence');
+    }
+    if (mark.note.length > MAX_MARK_NOTE_CHARS) {
+      throw new Error(`page mark note exceeds ${MAX_MARK_NOTE_CHARS} characters`);
+    }
   }
 
   getRecording(): PageAgentRecording {

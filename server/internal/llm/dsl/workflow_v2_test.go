@@ -60,7 +60,7 @@ type testSelectorPromptCatalog struct {
 // Invalid CSS fixtures that have no eligible ID are deliberately left raw so
 // production rejection paths remain covered.
 func testProviderSelectorEnvelope(request llm.CompletionRequest, content string) string {
-	marker := `{"version":"selector-catalog-v5"`
+	marker := `{"version":"selector-catalog-v6"`
 	index := strings.Index(request.User, marker)
 	if index < 0 {
 		return content
@@ -321,8 +321,8 @@ func TestGenerationPromptsRepeatFinalOutputAuditAfterUntrustedEvidence(t *testin
 		catalog     = `{"version":"selector-catalog-v3","catalogHash":"hash","candidates":[]}`
 	)
 	for name, prompt := range map[string]string{
-		"direct":    generationUserPrompt(requirement, baseline, "recording-tail", "", catalog),
-		"synthesis": synthesisUserPrompt(requirement, baseline, "analysis-tail", "", catalog),
+		"direct":    generationUserPrompt(requirement, baseline, `{"version":"page-marks-v1","marks":[]}`, "recording-tail", "", catalog),
+		"synthesis": synthesisUserPrompt(requirement, baseline, "analysis-tail", `{"version":"page-marks-v1","marks":[]}`, "", catalog),
 	} {
 		t.Run(name, func(t *testing.T) {
 			evidenceTail := "recording-tail"
@@ -778,13 +778,52 @@ func TestGenerationAndRepairPromptsDeclareSchemaExtractionActions(t *testing.T) 
 			t.Fatalf("prompt must forbid invented extraction action names: %q", prompt)
 		}
 	}
-	if prompt.DSLWorkflowVersion != "dsl-workflow-v47" ||
+	if prompt.DSLWorkflowVersion != "dsl-workflow-v49" ||
 		WorkflowPromptVersion != prompt.DSLWorkflowVersion {
 		t.Fatalf(
 			"prompt contract change must bump the authoritative durable workflow version: prompt=%q workflow=%q",
 			prompt.DSLWorkflowVersion,
 			WorkflowPromptVersion,
 		)
+	}
+}
+
+func TestWorkflowPageMarksPromptCarriesHumanNotesWithoutPageEvidence(t *testing.T) {
+	actionIndex := 3
+	snapshotSequence := 7
+	promptText := workflowPageMarksPrompt(map[string]any{
+		"marks": []models.PageMark{
+			{
+				ID: "mark-field", CanonicalID: "canonical-field", Role: models.PageMarkRoleField,
+				Note: "商品标题字段", ActionIndex: &actionIndex, SnapshotSequence: &snapshotSequence,
+				Element: models.PageMarkElement{Selector: ".product-title", Text: "Visible product title", AriaLabel: "Title aria"},
+			},
+			{
+				ID: "mark-exclude", Role: models.PageMarkRoleExclude, Note: "广告区域",
+				Element: models.PageMarkElement{Selector: ".ad", Text: "Sponsored"},
+			},
+		},
+	})
+	for _, required := range []string{"page-marks-v1", "mark-field", "canonical-field", "field", "商品标题字段", "mark-exclude", "exclude", "广告区域", "Human-authored notes express collection intent only"} {
+		if !strings.Contains(promptText, required) {
+			t.Fatalf("marks prompt omitted %q: %s", required, promptText)
+		}
+	}
+	for _, forbidden := range []string{".product-title", "Visible product title", "Title aria", ".ad", "Sponsored"} {
+		if strings.Contains(promptText, forbidden) {
+			t.Fatalf("marks prompt leaked page selector/text %q: %s", forbidden, promptText)
+		}
+	}
+	for name, userPrompt := range map[string]string{
+		"generation": generationUserPrompt("requirement", "baseline", promptText, "recording", "", `{"version":"selector-catalog-v6","catalogHash":"hash","candidates":[]}`),
+		"analysis":   analysisUserPrompt(1, 1, "requirement", "baseline", promptText, `{"version":"selector-catalog-v6","catalogHash":"hash","candidates":[]}`, "recording"),
+		"synthesis":  synthesisUserPrompt("requirement", "baseline", "analyses", promptText, "", `{"version":"selector-catalog-v6","catalogHash":"hash","candidates":[]}`),
+	} {
+		for _, required := range []string{"User-authored page mark intent summary", "markId", "exclude"} {
+			if !strings.Contains(userPrompt, required) {
+				t.Fatalf("%s prompt omitted page-mark instruction %q: %s", name, required, userPrompt)
+			}
+		}
 	}
 }
 
@@ -954,7 +993,7 @@ func TestDSLPromptsRequireEvidenceBackedRenderedExtractionSources(t *testing.T) 
 			t.Fatalf("analysis prompt must contain extraction-source instruction %q: %q", instruction, analysisSystemPrompt)
 		}
 	}
-	if userPrompt := synthesisUserPrompt("requirement", "baseline", "analyses", ""); !strings.Contains(userPrompt, "Back every extraction source with opaque candidate IDs from extractionEvidence") ||
+	if userPrompt := synthesisUserPrompt("requirement", "baseline", "analyses", `{"version":"page-marks-v1","marks":[]}`, ""); !strings.Contains(userPrompt, "Back every extraction source with opaque candidate IDs from extractionEvidence") ||
 		!strings.Contains(userPrompt, "rendered repeated semantic items") ||
 		!strings.Contains(userPrompt, "contentOmitted") ||
 		!strings.Contains(userPrompt, "extension-v2 provenance") {
@@ -985,7 +1024,7 @@ func TestGenerationAndRepairPromptsRequireVisibleExtractionSources(t *testing.T)
 		!strings.Contains(analysisSystemPrompt, "noscript, hidden fallback content") {
 		t.Fatalf("analysis prompt may recommend hidden extraction evidence: %q", analysisSystemPrompt)
 	}
-	if prompt := synthesisUserPrompt("requirement", "baseline", "analyses", ""); !strings.Contains(prompt, "visible rendered repeated semantic items") || !strings.Contains(prompt, "hidden, noscript") {
+	if prompt := synthesisUserPrompt("requirement", "baseline", "analyses", `{"version":"page-marks-v1","marks":[]}`, ""); !strings.Contains(prompt, "visible rendered repeated semantic items") || !strings.Contains(prompt, "hidden, noscript") {
 		t.Fatalf("synthesis prompt may reintroduce hidden extraction sources: %q", prompt)
 	}
 }
@@ -1137,14 +1176,14 @@ func TestGenerationAndRepairPromptsBindRepeatedSelectorsToDeterministicEvidence(
 	}
 	evidence := `{"version":"selector-catalog-v3","catalogHash":"hash","candidates":[{"rowCandidateId":"r_R8cJt2M0wL9f","observedSelector":"#results > .card","cardinalities":[2]}]}`
 	for name, prompt := range map[string]string{
-		"generation": generationUserPrompt("requirement", "baseline", "recording", "", evidence),
-		"synthesis":  synthesisUserPrompt("requirement", "baseline", "analyses", "", evidence),
+		"generation": generationUserPrompt("requirement", "baseline", `{"version":"page-marks-v1","marks":[]}`, "recording", "", evidence),
+		"synthesis":  synthesisUserPrompt("requirement", "baseline", "analyses", `{"version":"page-marks-v1","marks":[]}`, "", evidence),
 	} {
 		if !strings.Contains(prompt, "page-text-free selector candidate catalog") || !strings.Contains(prompt, evidence) {
 			t.Fatalf("%s user prompt omitted deterministic evidence: %q", name, prompt)
 		}
 	}
-	emptyCatalog := `{"version":"selector-catalog-v5","catalogHash":"","candidates":[]}`
+	emptyCatalog := `{"version":"selector-catalog-v6","catalogHash":"","candidates":[]}`
 	if got := selectorEvidencePrompt([]string{"not-json"}); got != emptyCatalog {
 		t.Fatalf("invalid evidence must fail closed to an empty catalog, got %q", got)
 	}

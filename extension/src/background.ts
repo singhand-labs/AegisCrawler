@@ -1,5 +1,5 @@
 import { convert, convertToYaml, writeYaml, enhanceWithIntent } from '../../src/rule-generator';
-import type { PageAgentRecording, Rule, IntentCandidate } from '../../src/rule-generator';
+import type { PageAgentRecording, PageMark, Rule, IntentCandidate } from '../../src/rule-generator';
 import { preprocess } from './recording/preprocessor';
 import { aggregateFrameDom } from './recording/frame-aggregator';
 import type { AggregateOptions } from './recording/frame-aggregator';
@@ -20,7 +20,7 @@ interface ServerKeys {
 }
 
 interface RecordingCapabilities {
-  features?: { recordingV2?: boolean; workflowV2?: boolean };
+  features?: { recordingV2?: boolean; workflowV2?: boolean; pageMarks?: boolean };
   recordingLimits?: {
     maxActions?: number;
     maxDurationMs?: number;
@@ -137,6 +137,7 @@ let recordingState: RecordingState = 'idle';
 let serverConfig: ServerConfig = { baseUrl: '' };
 let serverKeys: ServerKeys = {};
 let activeRecording: ActiveRecordingSession | null = null;
+let lastCapabilities: RecordingCapabilities | null = null;
 const RECORDING_SESSION_KEY = 'oc_recording_session';
 // D-3: disk-backed checkpoint key per tab. The RECORDING_CHECKPOINT handler
 // writes here as defense-in-depth alongside IndexedDB + .session so a single
@@ -246,8 +247,9 @@ const PRIVILEGED_ACTIONS = new Set([
   'GENERATE_RULE',
   'DOWNLOAD_RULE',
   'PREDICT_INTENT',
-  'GET_REQUIREMENT_WORKFLOW',
-  'NORMALIZE_REQUIREMENT',
+      'GET_REQUIREMENT_WORKFLOW',
+      'UPDATE_RECORDING_MARKS',
+      'NORMALIZE_REQUIREMENT',
   'RETRY_REQUIREMENT_JOB',
   'CONFIRM_REQUIREMENT',
   'CREATE_DSL_WORKFLOW',
@@ -379,6 +381,7 @@ async function resolveRecordingOptions(payload: unknown): Promise<Record<string,
     );
     if (!response.ok) return requested;
     const capabilities = await response.json() as RecordingCapabilities;
+    lastCapabilities = capabilities;
     if (!capabilities.features?.recordingV2) return requested;
     const limits = capabilities.recordingLimits ?? {};
     return {
@@ -447,7 +450,8 @@ async function loadCapabilities(): Promise<RecordingCapabilities | null> {
       5000,
     );
     if (!response.ok) return null;
-    return await response.json() as RecordingCapabilities;
+    lastCapabilities = await response.json() as RecordingCapabilities;
+    return lastCapabilities;
   } catch {
     return null;
   }
@@ -462,6 +466,48 @@ async function requirementRecording(): Promise<{ recording: PageAgentRecording; 
   const recordingId = recording.meta.serverRecordingId;
   if (!recordingId) throw new Error('录制尚未获得服务端 ID');
   return { recording, recordingId };
+}
+
+function marksOverrideForServer(recording: PageAgentRecording, capabilities: RecordingCapabilities | null): unknown[] | undefined {
+  if (!capabilities?.features?.pageMarks) return undefined;
+  return Array.isArray(recording.marks) ? recording.marks : [];
+}
+
+function marksFingerprint(recording: PageAgentRecording): string {
+  const marks = Array.isArray(recording.marks) ? recording.marks : [];
+  const stable = JSON.stringify(marks.map((mark) => ({
+    id: mark.id,
+    role: mark.role,
+    note: mark.note,
+    selector: mark.element?.selector,
+    actionIndex: mark.actionIndex,
+    snapshotSequence: mark.snapshotSequence,
+    state: mark.state,
+  })));
+  let hash = 5381;
+  for (let index = 0; index < stable.length; index++) {
+    hash = ((hash << 5) + hash) ^ stable.charCodeAt(index);
+  }
+  return `${marks.length}:${(hash >>> 0).toString(36)}`;
+}
+
+function validPageMarkArray(value: unknown): value is PageMark[] {
+  const roles = new Set(['listItem', 'field', 'nextPage', 'input', 'exclude']);
+  if (!Array.isArray(value) || value.length > 24) return false;
+  return value.every((mark) => {
+    if (!mark || typeof mark !== 'object') return false;
+    const candidate = mark as Partial<PageMark>;
+    return typeof candidate.id === 'string'
+      && typeof candidate.timestamp === 'number'
+      && typeof candidate.url === 'string'
+      && typeof candidate.role === 'string'
+      && roles.has(candidate.role)
+      && typeof candidate.note === 'string'
+      && [...candidate.note].length <= 200
+      && Boolean(candidate.element)
+      && typeof candidate.element?.selector === 'string'
+      && candidate.element.selector.trim().length > 0;
+  });
 }
 
 async function requirementRequest<T>(path: string, options: RequestInit = {}, timeoutMs = FETCH_TIMEOUT_MS): Promise<T> {
@@ -1428,6 +1474,7 @@ const STATE_MUTATING_ACTIONS = new Set([
   'RECORDING_CHECKPOINT',
   'RESUME_RECORDING',
   'RECORDING_STATUS',
+  'UPDATE_RECORDING_MARKS',
   'CLEAR_RECORDING_CHECKPOINT',
   'SET_SERVER_CONFIG',
   'START_REPLAY',
@@ -1766,6 +1813,25 @@ async function handleMessage(
       return { recording };
     }
 
+    case 'UPDATE_RECORDING_MARKS': {
+      const payload = message.payload as { marks?: unknown } | undefined;
+      if (!validPageMarkArray(payload?.marks)) {
+        return { success: false, error: 'invalid page marks' };
+      }
+      const recording = await recordingStore.get();
+      if (!recording || recording.version !== '2.0.0') {
+        return { success: false, error: '没有可更新的语义录制' };
+      }
+      recording.marks = payload.marks;
+      await recordingStore.set(recording);
+      await chrome.storage.session.remove([
+        REQUIREMENT_CANDIDATE_JOB_KEY,
+        REQUIREMENT_NORMALIZE_JOB_KEY,
+        DSL_WORKFLOW_SESSION_KEY,
+      ]);
+      return { success: true, marks: recording.marks };
+    }
+
     case 'GENERATE_RULE': {
       const recording = await recordingStore.get();
       if (!recording) {
@@ -1829,22 +1895,24 @@ async function handleMessage(
       // probe: report workflowV2 and resume a stored job, but never create one.
       const startCandidates = payload?.startCandidates === true;
       try {
-        const { recordingId } = await requirementRecording();
+        const { recording, recordingId } = await requirementRecording();
+        const marksHash = marksFingerprint(recording);
+        const marksOverride = marksOverrideForServer(recording, capabilities);
         const stored = await chrome.storage.session.get(REQUIREMENT_CANDIDATE_JOB_KEY);
-        const resumable = stored[REQUIREMENT_CANDIDATE_JOB_KEY] as { recordingId?: string; jobId?: string } | undefined;
-        let jobId = resumable?.recordingId === recordingId ? resumable.jobId : undefined;
+        const resumable = stored[REQUIREMENT_CANDIDATE_JOB_KEY] as { recordingId?: string; marksHash?: string; jobId?: string } | undefined;
+        let jobId = resumable?.recordingId === recordingId && resumable.marksHash === marksHash ? resumable.jobId : undefined;
         if (!jobId) {
           if (!startCandidates) {
             return { success: true, workflowV2: true };
           }
           const submitted = await requirementRequest<RequirementJobResponse>(
             `/api/v1/recordings/${encodeURIComponent(recordingId)}/requirement-jobs`,
-            { method: 'POST', body: '{}' },
+            { method: 'POST', body: JSON.stringify(marksOverride === undefined ? {} : { marksOverride }) },
             LLM_FETCH_TIMEOUT_MS,
           );
           jobId = submitted.job?.id;
           if (!jobId) throw new Error('服务端未返回采集需求任务 ID');
-          await chrome.storage.session.set({ [REQUIREMENT_CANDIDATE_JOB_KEY]: { recordingId, jobId } });
+          await chrome.storage.session.set({ [REQUIREMENT_CANDIDATE_JOB_KEY]: { recordingId, marksHash, jobId } });
         }
         return requirementJobResult(await pollRequirementJob(jobId));
       } catch (error) {
@@ -1854,29 +1922,33 @@ async function handleMessage(
 
     case 'NORMALIZE_REQUIREMENT': {
       try {
-        const { recordingId } = await requirementRecording();
+        const { recording, recordingId } = await requirementRecording();
+        const marksHash = marksFingerprint(recording);
+        const marksOverride = marksOverrideForServer(recording, lastCapabilities);
         const payload = message.payload as {
           requirement?: unknown;
           customText?: string;
           candidateJobId?: string;
           candidateId?: string;
         } | undefined;
+        const requestBody: Record<string, unknown> = {
+          requirement: payload?.requirement,
+          customText: payload?.customText,
+          candidateJobId: payload?.candidateJobId,
+          candidateId: payload?.candidateId,
+        };
+        if (marksOverride !== undefined) requestBody.marksOverride = marksOverride;
         const submitted = await requirementRequest<RequirementJobResponse>(
           `/api/v1/recordings/${encodeURIComponent(recordingId)}/requirement-jobs/normalize`,
           {
             method: 'POST',
-            body: JSON.stringify({
-              requirement: payload?.requirement,
-              customText: payload?.customText,
-              candidateJobId: payload?.candidateJobId,
-              candidateId: payload?.candidateId,
-            }),
+            body: JSON.stringify(requestBody),
           },
           LLM_FETCH_TIMEOUT_MS,
         );
         const jobId = submitted.job?.id;
         if (!jobId) throw new Error('服务端未返回规范化任务 ID');
-        await chrome.storage.session.set({ [REQUIREMENT_NORMALIZE_JOB_KEY]: { recordingId, jobId } });
+        await chrome.storage.session.set({ [REQUIREMENT_NORMALIZE_JOB_KEY]: { recordingId, marksHash, jobId } });
         return requirementJobResult(await pollRequirementJob(jobId));
       } catch (error) {
         return { success: false, workflowV2: true, error: error instanceof Error ? error.message : String(error) };
@@ -2385,6 +2457,7 @@ async function handleMessage(
     case 'SET_SERVER_CONFIG': {
       const payload = message.payload as ServerConfig & ServerKeys & { rememberSession?: boolean };
       await saveServerConfig({ baseUrl: payload.baseUrl });
+      lastCapabilities = null;
       if (payload.rememberSession !== false) {
         await saveServerKeys({ apiKey: payload.apiKey, adminApiKey: payload.adminApiKey });
       } else {

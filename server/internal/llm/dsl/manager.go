@@ -320,7 +320,7 @@ func (m *Manager) AdoptAdminReviewedAttempt(ctx context.Context, requirementID, 
 		return nil, fmt.Errorf("%w: exported baseline failed the security scanner", ErrInvalidWorkflowInput)
 	}
 
-	selectorCatalog, err := platformrule.BuildSelectorEvidenceCatalog(recording.Payload)
+	selectorCatalog, err := platformrule.BuildSelectorEvidenceCatalog(recordingPayloadWithRequirementMarks(recording.Payload, requirement.Marks))
 	if err != nil {
 		return nil, fmt.Errorf("%w: selector evidence could not be derived: %v", ErrInvalidWorkflowInput, err)
 	}
@@ -793,7 +793,7 @@ func (m *Manager) Correct(ctx context.Context, workflowID string, corrected *mod
 	if err != nil {
 		return nil, err
 	}
-	selectorCatalog, err := platformrule.BuildSelectorEvidenceCatalog(recording.Payload)
+	selectorCatalog, err := platformrule.BuildSelectorEvidenceCatalog(recordingPayloadWithRequirementMarks(recording.Payload, requirement.Marks))
 	if err != nil {
 		return nil, fmt.Errorf("%w: selector evidence could not be derived: %v", ErrInvalidWorkflowInput, err)
 	}
@@ -2168,6 +2168,23 @@ func safeMessageValue(value string) string {
 		return safe
 	}
 	return ""
+}
+
+func recordingPayloadWithRequirementMarks(payload map[string]any, marks []models.PageMark) map[string]any {
+	if len(marks) == 0 {
+		copy := make(map[string]any, len(payload)+1)
+		for key, value := range payload {
+			copy[key] = value
+		}
+		copy["marks"] = []models.PageMark{}
+		return copy
+	}
+	copy := make(map[string]any, len(payload)+1)
+	for key, value := range payload {
+		copy[key] = value
+	}
+	copy["marks"] = marks
+	return copy
 }
 
 func mergeDiagnostics(current any, additions map[string]any) map[string]any {

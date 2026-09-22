@@ -1,3 +1,5 @@
+import type { PageMark } from '../../../src/rule-generator';
+
 export interface IntentCandidate {
   id: string;
   label: string;
@@ -334,6 +336,7 @@ export interface WizardState {
   replayVariables: Record<string, unknown>;
   replayExtracted: Record<string, unknown>;
   replayResults: unknown[];
+  pageMarks: PageMark[];
 }
 
 export interface PredictIntentResult extends PredictIntentResponse {

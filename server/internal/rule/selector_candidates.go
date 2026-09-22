@@ -23,7 +23,8 @@ const (
 	selectorPromptCatalogVersionV2       = "selector-catalog-v2"
 	selectorPromptCatalogVersionV3       = "selector-catalog-v3"
 	selectorPromptCatalogVersionV4       = "selector-catalog-v4"
-	selectorPromptCatalogVersion         = "selector-catalog-v5"
+	selectorPromptCatalogVersionV5       = "selector-catalog-v5"
+	selectorPromptCatalogVersion         = "selector-catalog-v6"
 	selectorPromptV2DigestBytes          = 9
 	maxPromptFieldsPerTarget             = 48
 	maxPromptV3FieldsPerTarget           = 16
@@ -55,6 +56,9 @@ type SelectorPromptTargetCandidate struct {
 	State             string                         `json:"state"`
 	SnapshotSequences []int                          `json:"snapshotSequences"`
 	Cardinalities     []int                          `json:"cardinalities"`
+	UserMarked        bool                           `json:"userMarked,omitempty"`
+	MarkRole          string                         `json:"markRole,omitempty"`
+	MarkID            string                         `json:"markId,omitempty"`
 	FieldCandidates   []SelectorPromptFieldCandidate `json:"fieldCandidates,omitempty"`
 }
 
@@ -150,6 +154,7 @@ func (a *opaqueCandidateIDAssigner) assign(kind, canonical string) string {
 	if a.version == selectorPromptCatalogVersionV2 ||
 		a.version == selectorPromptCatalogVersionV3 ||
 		a.version == selectorPromptCatalogVersionV4 ||
+		a.version == selectorPromptCatalogVersionV5 ||
 		a.version == selectorPromptCatalogVersion {
 		switch kind {
 		case "row":
@@ -204,6 +209,7 @@ func (c *SelectorEvidenceCatalog) ReconstructProviderPrompt(
 		stored.Version != selectorPromptCatalogVersionV2 &&
 		stored.Version != selectorPromptCatalogVersionV3 &&
 		stored.Version != selectorPromptCatalogVersionV4 &&
+		stored.Version != selectorPromptCatalogVersionV5 &&
 		stored.Version != selectorPromptCatalogVersion {
 		return "", nil, fmt.Errorf(
 			"%w: unsupported stored selector catalog version %q",
@@ -222,6 +228,7 @@ func (c *SelectorEvidenceCatalog) prepareProviderPrompt(
 		version != selectorPromptCatalogVersionV2 &&
 		version != selectorPromptCatalogVersionV3 &&
 		version != selectorPromptCatalogVersionV4 &&
+		version != selectorPromptCatalogVersionV5 &&
 		version != selectorPromptCatalogVersion {
 		return "", nil, fmt.Errorf("%w: unsupported selector catalog version %q", ErrSelectorCatalogUnavailable, version)
 	}
@@ -388,6 +395,11 @@ func (c *SelectorEvidenceCatalog) orderedPromptCandidates(
 	for _, pin := range pinned {
 		add(pin.candidate)
 	}
+	if version == selectorPromptCatalogVersion {
+		for _, candidate := range c.userMarkedCandidates {
+			add(candidate)
+		}
+	}
 	for _, candidate := range candidates {
 		add(candidate)
 	}
@@ -425,7 +437,7 @@ func (c *SelectorEvidenceCatalog) buildProviderTargetEvidence(
 		return nil, err
 	}
 	cardinalities := append([]int(nil), candidate.Cardinalities...)
-	if version == selectorPromptCatalogVersion && minIntSlice(cardinalities) >= 2 {
+	if (version == selectorPromptCatalogVersionV5 || version == selectorPromptCatalogVersion) && minIntSlice(cardinalities) >= 2 {
 		nodeSets = explicitlyRenderedRowNodeSets(nodeSets)
 		cardinalities = make([]int, len(nodeSets))
 		for index, nodes := range nodeSets {
@@ -436,7 +448,7 @@ func (c *SelectorEvidenceCatalog) buildProviderTargetEvidence(
 		}
 	}
 	selector := candidate.Selector
-	if version == selectorPromptCatalogVersionV4 || version == selectorPromptCatalogVersion {
+	if version == selectorPromptCatalogVersionV4 || version == selectorPromptCatalogVersionV5 || version == selectorPromptCatalogVersion {
 		if replacement := exactSemanticMainTarget(nodeSets); replacement != "" {
 			selector = replacement
 		}
@@ -454,6 +466,9 @@ func (c *SelectorEvidenceCatalog) buildProviderTargetEvidence(
 			State:             candidate.State,
 			SnapshotSequences: append([]int(nil), candidate.SnapshotSequences...),
 			Cardinalities:     cardinalities,
+			UserMarked:        candidate.UserMarked,
+			MarkRole:          candidate.MarkRole,
+			MarkID:            candidate.MarkID,
 		},
 	}
 	if minIntSlice(cardinalities) >= 2 {
@@ -584,6 +599,7 @@ func appendOptionalProviderFieldEvidence(
 	fieldLimit := maxPromptFieldsPerTarget
 	if assigner.version == selectorPromptCatalogVersionV3 ||
 		assigner.version == selectorPromptCatalogVersionV4 ||
+		assigner.version == selectorPromptCatalogVersionV5 ||
 		assigner.version == selectorPromptCatalogVersion {
 		fieldLimit = maxPromptV3FieldsPerTarget
 	}
@@ -1024,7 +1040,7 @@ func (c *SelectorEvidenceCatalog) trustedActionTargetCandidate(
 	if err != nil {
 		return SelectorEvidenceCandidate{}, fmt.Errorf("%w: %s.target evidence is incomplete", ErrInvalidProvisionalRule, path)
 	}
-	if version == selectorPromptCatalogVersion && multiple {
+	if (version == selectorPromptCatalogVersionV5 || version == selectorPromptCatalogVersion) && multiple {
 		nodeSets = explicitlyRenderedRowNodeSets(nodeSets)
 		for _, nodes := range nodeSets {
 			if len(nodes) < 2 {

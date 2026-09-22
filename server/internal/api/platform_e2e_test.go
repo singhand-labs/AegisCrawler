@@ -157,7 +157,7 @@ func (f *platformE2ECompleter) Complete(_ context.Context, request llm.Completio
 }
 
 func platformE2EProviderEnvelope(prompt string, rule *models.Rule) (map[string]any, error) {
-	marker := `{"version":"selector-catalog-v5"`
+	marker := `{"version":"selector-catalog-v6"`
 	index := strings.Index(prompt, marker)
 	if index < 0 {
 		return nil, fmt.Errorf("provider prompt omitted selector candidate catalog")

@@ -15,6 +15,7 @@ import type {
 } from './intent-types';
 import { isCollectionRequirementSpec, containsUnsafeRequirement } from './intent-types';
 import { redactString, hasSensitiveContent } from './client-redact';
+import type { PageAgentRecording, PageMark, PageMarkRole } from '../../../src/rule-generator';
 import { sendAction } from '../messaging';
 
 let keepAlivePort: ReturnType<typeof chrome.runtime.connect> | null = null;
@@ -75,6 +76,7 @@ const MAX_REPLAY_OUTPUT_CLIENT_BYTES = 1024 * 1024; // 1 MiB
 const MAX_REPLAY_LOGS_IN_MEMORY = 500;
 
 const CUSTOM_INTENT_STORAGE_KEY = 'oc_intent_custom_description';
+let generatedMarksIntentDraft = '';
 
 export const state: WizardState = {
   step: 'intent',
@@ -108,6 +110,7 @@ export const state: WizardState = {
   replayVariables: {},
   replayExtracted: {},
   replayResults: [],
+  pageMarks: [],
 };
 
 export function getEl<T extends HTMLElement>(id: string): T | null {
@@ -171,7 +174,10 @@ export function showStep(step: WizardState['step']): void {
   document.querySelectorAll('.step').forEach((el) => el.classList.add('hidden'));
   const section = getEl<HTMLElement>(`step-${step}`);
   if (section) section.classList.remove('hidden');
-  if (step === 'intent') renderIntentHint();
+  if (step === 'intent') {
+    renderIntentHint();
+    renderPageMarks();
+  }
   renderActions();
 }
 
@@ -206,11 +212,170 @@ async function restoreCustomIntent(): Promise<void> {
   }
 }
 
+const markRoleLabels: Record<PageMarkRole, string> = {
+  listItem: '列表项',
+  field: '字段',
+  nextPage: '下一页',
+  input: '输入项',
+  exclude: '排除',
+};
+
+function validPageMarks(value: unknown): value is PageMark[] {
+  return Array.isArray(value) && value.every((mark) => mark && typeof mark === 'object'
+    && typeof (mark as PageMark).id === 'string'
+    && typeof (mark as PageMark).role === 'string'
+    && typeof (mark as PageMark).note === 'string'
+    && Boolean((mark as PageMark).element));
+}
+
+function markSelectorPreview(mark: PageMark): string {
+  return mark.element.stableSelector || mark.element.selector || mark.element.tagName || '未知元素';
+}
+
+function buildMarksIntentDraft(marks: PageMark[]): string {
+  const grouped = marks.reduce((acc, mark) => {
+    if (mark.role === 'exclude') return acc;
+    const label = markRoleLabels[mark.role] ?? mark.role;
+    const note = mark.note.trim() || markSelectorPreview(mark);
+    if (!acc[label]) acc[label] = [];
+    acc[label].push(note);
+    return acc;
+  }, {} as Record<string, string[]>);
+  const parts = Object.entries(grouped).map(([role, notes]) => `${notes.length} 个${role}：${notes.slice(0, 4).join('、')}`);
+  const excludes = marks.filter((mark) => mark.role === 'exclude').map((mark) => mark.note.trim()).filter(Boolean);
+  if (excludes.length > 0) parts.push(`排除：${excludes.slice(0, 4).join('、')}`);
+  return parts.length > 0 ? `录制时圈选了${parts.join('；')}。请优先按这些标注理解采集意图。` : '';
+}
+
+function seedCustomIntentFromMarks(): void {
+  const input = getEl<HTMLTextAreaElement>('custom-description');
+  if (!input || state.pageMarks.length === 0) return;
+  const draft = buildMarksIntentDraft(state.pageMarks);
+  if (!draft) return;
+  if (input.value.trim() === draft) {
+    generatedMarksIntentDraft = draft;
+    return;
+  }
+  if (input.value.trim() || state.customIntentDescription.trim()) return;
+  input.value = draft;
+  generatedMarksIntentDraft = draft;
+  persistCustomIntent(draft);
+}
+
+function refreshGeneratedMarksDraftAfterMarksChange(): void {
+  const input = getEl<HTMLTextAreaElement>('custom-description');
+  if (!input) return;
+  const previousDraft = generatedMarksIntentDraft;
+  const nextDraft = buildMarksIntentDraft(state.pageMarks);
+  const current = input.value.trim();
+  if (current.length === 0 || current === previousDraft) {
+    input.value = nextDraft;
+    persistCustomIntent(nextDraft);
+  }
+  generatedMarksIntentDraft = nextDraft;
+}
+
+function invalidateRequirementFlowAfterMarksChange(): void {
+  state.candidatesRequested = false;
+  state.requirementCandidates = [];
+  state.selectedRequirementCandidate = null;
+  state.normalizedRequirement = null;
+  state.requirementBaseline = '';
+  state.requirementId = null;
+  state.requirementJobId = null;
+  state.requirementReviewReady = false;
+  state.dslWorkflowId = null;
+  state.dslJobId = null;
+  state.replayAttemptId = null;
+  state.rule = null;
+  state.yaml = '';
+  state.confirmedSteps.clear();
+}
+
+async function persistPageMarks(marks: PageMark[]): Promise<boolean> {
+  const response = (await sendAction('UPDATE_RECORDING_MARKS', { marks })) as { success?: boolean; marks?: PageMark[]; error?: string };
+  if (!response.success) {
+    setStatus(response.error || '更新录制标注失败', 'error');
+    return false;
+  }
+  state.pageMarks = validPageMarks(response.marks) ? response.marks : marks;
+  refreshGeneratedMarksDraftAfterMarksChange();
+  invalidateRequirementFlowAfterMarksChange();
+  renderPageMarks();
+  renderCandidates();
+  renderActions();
+  setStatus('录制标注已更新；候选需求和后续 DSL 将重新生成', 'info');
+  return true;
+}
+
+function renderPageMarks(): void {
+  const panel = getEl<HTMLDivElement>('page-marks-panel');
+  const list = getEl<HTMLDivElement>('page-marks-list');
+  const count = getEl<HTMLSpanElement>('page-marks-count');
+  if (!panel || !list) return;
+  list.innerHTML = '';
+  if (count) count.textContent = state.pageMarks.length > 0 ? `${state.pageMarks.length}/24` : '';
+  if (state.pageMarks.length === 0) {
+    panel.classList.add('hidden');
+    return;
+  }
+  panel.classList.remove('hidden');
+  state.pageMarks.forEach((mark, index) => {
+    const chip = document.createElement('div');
+    chip.className = 'page-mark-chip';
+
+    const summary = document.createElement('div');
+    const role = document.createElement('span');
+    role.className = 'page-mark-role';
+    role.textContent = markRoleLabels[mark.role] ?? mark.role;
+    const selector = document.createElement('code');
+    selector.className = 'page-mark-selector';
+    selector.textContent = markSelectorPreview(mark);
+    summary.append(role, selector);
+
+    const note = document.createElement('textarea');
+    note.maxLength = 200;
+    note.value = mark.note;
+    note.setAttribute('aria-label', `${role.textContent}备注`);
+
+    const actions = document.createElement('div');
+    actions.className = 'page-mark-actions';
+    const save = document.createElement('button');
+    save.type = 'button';
+    save.textContent = '保存';
+    save.addEventListener('click', () => {
+      const nextNote = note.value.trim();
+      if ([...nextNote].length > 200) {
+        setStatus('标注备注不能超过 200 字符', 'error');
+        return;
+      }
+      void persistPageMarks(state.pageMarks.map((item, itemIndex) => itemIndex === index ? { ...item, note: nextNote } : item));
+    });
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.textContent = '删除';
+    remove.addEventListener('click', () => {
+      void persistPageMarks(state.pageMarks.filter((_, itemIndex) => itemIndex !== index));
+    });
+    actions.append(save, remove);
+    chip.append(summary, note, actions);
+    list.appendChild(chip);
+  });
+}
+
+async function loadPageMarksFromRecording(): Promise<void> {
+  const response = (await sendAction('GET_LAST_RECORDING')) as { recording?: PageAgentRecording | null };
+  state.pageMarks = validPageMarks(response.recording?.marks) ? response.recording!.marks ?? [] : [];
+  renderPageMarks();
+  seedCustomIntentFromMarks();
+}
+
 export async function loadPredictions(): Promise<void> {
   state.loading = true;
   setStatus('正在加载采集需求工作流...');
   try {
     await restoreCustomIntent();
+    await loadPageMarksFromRecording();
     // Capability probe only: candidate generation is the most expensive phase
     // and stays on demand until the user explicitly requests it.
     const workflow = (await sendAction('GET_REQUIREMENT_WORKFLOW', { startCandidates: false })) as RequirementWorkflowResult;

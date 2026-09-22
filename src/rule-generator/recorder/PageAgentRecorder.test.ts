@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { PageAgentRecorder } from './PageAgentRecorder';
+import type { PageMark } from '../types';
 
 function makeMockController() {
   return {
@@ -9,6 +10,28 @@ function makeMockController() {
     scroll: vi.fn(async (options: any) => ({ success: true })),
     scrollHorizontally: vi.fn(async (options: any) => ({ success: true })),
     executeJavascript: vi.fn(async (script: string) => ({ success: true })),
+  };
+}
+
+function pageMark(overrides: Partial<PageMark> = {}): PageMark {
+  return {
+    id: 'mark-1',
+    timestamp: 1,
+    url: 'https://example.test/list',
+    role: 'field',
+    note: 'price field',
+    actionIndex: 0,
+    snapshotSequence: 0,
+    state: 'https://example.test/list',
+    element: {
+      index: 1,
+      tagName: 'span',
+      selector: '.price',
+      stableSelector: '.price',
+      text: '$10',
+      boundingRect: { x: 1, y: 2, width: 30, height: 12 },
+    },
+    ...overrides,
   };
 }
 
@@ -335,5 +358,56 @@ describe('PageAgentRecorder', () => {
       vi.stubGlobal('window', savedWindow);
       vi.stubGlobal('document', savedDocument);
     }
+  });
+
+  it('stores page marks on v2 recordings', () => {
+    const recorder = new PageAgentRecorder(makeMockController(), {
+      protocolVersion: '2.0.0',
+      captureSnapshotBeforeEachEvent: false,
+    });
+
+    recorder.addMark(pageMark());
+
+    expect(recorder.getRecording().marks).toEqual([pageMark()]);
+  });
+
+  it('replaces an existing page mark with the same id', () => {
+    const recorder = new PageAgentRecorder(makeMockController(), {
+      protocolVersion: '2.0.0',
+      captureSnapshotBeforeEachEvent: false,
+    });
+
+    recorder.addMark(pageMark({ note: 'old note' }));
+    recorder.addMark(pageMark({ note: 'new note' }));
+
+    expect(recorder.getRecording().marks).toHaveLength(1);
+    expect(recorder.getRecording().marks?.[0].note).toBe('new note');
+  });
+
+  it('removes page marks by id', () => {
+    const recorder = new PageAgentRecorder(makeMockController(), {
+      protocolVersion: '2.0.0',
+      captureSnapshotBeforeEachEvent: false,
+    });
+
+    recorder.addMark(pageMark({ id: 'm1' }));
+    recorder.addMark(pageMark({ id: 'm2' }));
+
+    expect(recorder.removeMark('m1')).toBe(true);
+    expect(recorder.getRecording().marks?.map((mark) => mark.id)).toEqual(['m2']);
+    expect(recorder.removeMark('missing')).toBe(false);
+  });
+
+  it('rejects marks that exceed note or count limits', () => {
+    const recorder = new PageAgentRecorder(makeMockController(), {
+      protocolVersion: '2.0.0',
+      captureSnapshotBeforeEachEvent: false,
+      maxMarks: 2,
+    });
+
+    expect(() => recorder.addMark(pageMark({ note: 'x'.repeat(201) }))).toThrow(/note/i);
+    recorder.addMark(pageMark({ id: 'm1' }));
+    recorder.addMark(pageMark({ id: 'm2' }));
+    expect(() => recorder.addMark(pageMark({ id: 'm3' }))).toThrow(/maximum mark count/i);
   });
 });

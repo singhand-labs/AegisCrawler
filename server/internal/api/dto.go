@@ -141,6 +141,7 @@ type RecordingLimits struct {
 type CapabilityFeatureSet struct {
 	RecordingV2 bool `json:"recordingV2"`
 	WorkflowV2  bool `json:"workflowV2"`
+	PageMarks   bool `json:"pageMarks"`
 	MCP         bool `json:"mcp"`
 }
 
@@ -154,11 +155,16 @@ type RecordingResponse struct {
 	Recording *models.Recording `json:"recording"`
 }
 
+type CreateRequirementCandidatesRequest struct {
+	MarksOverride *[]models.PageMark `json:"marksOverride,omitempty"`
+}
+
 type NormalizeRequirementRequest struct {
 	Requirement    *models.CollectionRequirementSpec `json:"requirement,omitempty"`
 	CustomText     string                            `json:"customText,omitempty"`
 	CandidateJobID string                            `json:"candidateJobId,omitempty"`
 	CandidateID    string                            `json:"candidateId,omitempty"`
+	MarksOverride  *[]models.PageMark                `json:"marksOverride,omitempty"`
 }
 
 type RequirementJobResponse struct {

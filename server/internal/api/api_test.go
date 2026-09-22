@@ -100,7 +100,7 @@ func TestCapabilities(t *testing.T) {
 	if len(got.WorkerProtocolVersions) != 2 || got.WorkerProtocolVersions[1] != "v2" {
 		t.Fatalf("unexpected worker protocols: %v", got.WorkerProtocolVersions)
 	}
-	if !got.Features.RecordingV2 || !got.Features.WorkflowV2 || got.Features.MCP {
+	if !got.Features.RecordingV2 || !got.Features.WorkflowV2 || !got.Features.PageMarks || got.Features.MCP {
 		t.Fatalf("unexpected feature flags: %+v", got.Features)
 	}
 	if got.RecordingLimits.MaxActions != 500 || got.RecordingLimits.MaxDurationMs != int64((2*time.Hour)/time.Millisecond) || got.RecordingLimits.MaxCompressedBytes != 25*1024*1024 {

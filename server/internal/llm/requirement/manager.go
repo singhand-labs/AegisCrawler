@@ -19,11 +19,19 @@ import (
 	"go.uber.org/zap"
 )
 
+type CandidateInput struct {
+	Kind          models.RequirementJobKind `json:"kind"`
+	MarksOverride *[]models.PageMark        `json:"marksOverride,omitempty"`
+	MarksHash     string                    `json:"marksHash,omitempty"`
+}
+
 type NormalizationInput struct {
 	Requirement    *models.CollectionRequirementSpec `json:"requirement,omitempty"`
 	CustomText     string                            `json:"customText,omitempty"`
 	CandidateJobID string                            `json:"candidateJobId,omitempty"`
 	CandidateID    string                            `json:"candidateId,omitempty"`
+	MarksOverride  *[]models.PageMark                `json:"marksOverride,omitempty"`
+	MarksHash      string                            `json:"marksHash,omitempty"`
 }
 
 type Manager struct {
@@ -55,12 +63,22 @@ func (m *Manager) policyFingerprint() string {
 }
 
 func (m *Manager) SubmitCandidates(ctx context.Context, recordingID string) (*models.RequirementJob, error) {
+	return m.SubmitCandidatesWithInput(ctx, recordingID, CandidateInput{})
+}
+
+func (m *Manager) SubmitCandidatesWithInput(ctx context.Context, recordingID string, input CandidateInput) (*models.RequirementJob, error) {
+	input.Kind = models.RequirementJobCandidates
+	_, _, marksHash, err := m.effectiveMarksForRecording(ctx, recordingID, input.MarksOverride)
+	if err != nil {
+		return nil, err
+	}
+	input.MarksHash = marksHash
 	job := &models.RequirementJob{
 		ID: store.NewID(), RecordingID: recordingID, Kind: models.RequirementJobCandidates,
 		Status: models.RequirementJobPending, Source: models.RequirementSourceLLM,
 		PromptVersion: PromptVersion, MaxAttempts: m.cfg.RequirementMaxAttempts(),
 	}
-	if err := m.store.CreateRequirementJob(ctx, job, map[string]any{"kind": models.RequirementJobCandidates}); err != nil {
+	if err := m.store.CreateRequirementJob(ctx, job, input); err != nil {
 		return nil, err
 	}
 	return job, nil
@@ -73,13 +91,18 @@ func (m *Manager) SubmitNormalization(ctx context.Context, recordingID string, i
 		return nil, fmt.Errorf("%w: provide exactly one structured requirement or custom text", ErrInvalidRequirement)
 	}
 	source := models.RequirementSourceLLM
+	_, _, marksHash, err := m.effectiveMarksForRecording(ctx, recordingID, input.MarksOverride)
+	if err != nil {
+		return nil, err
+	}
+	input.MarksHash = marksHash
 	if structured {
 		if err := ValidateSpec(*input.Requirement); err != nil {
 			return nil, err
 		}
 		source = models.RequirementSourceManual
 		if input.CandidateJobID != "" || input.CandidateID != "" {
-			if err := m.validateCandidateLineage(ctx, input.CandidateJobID, input.CandidateID); err != nil {
+			if err := m.validateCandidateLineage(ctx, input.CandidateJobID, input.CandidateID, input.MarksHash); err != nil {
 				return nil, err
 			}
 			source = models.RequirementSourceLLM
@@ -98,13 +121,21 @@ func (m *Manager) SubmitNormalization(ctx context.Context, recordingID string, i
 	return job, nil
 }
 
-func (m *Manager) validateCandidateLineage(ctx context.Context, jobID, candidateID string) error {
+func (m *Manager) validateCandidateLineage(ctx context.Context, jobID, candidateID, marksHash string) error {
 	if jobID == "" || candidateID == "" {
 		return fmt.Errorf("%w: candidate job and candidate id must be provided together", ErrInvalidRequirement)
 	}
 	job, err := m.store.GetRequirementJob(ctx, jobID)
 	if err != nil || job.Kind != models.RequirementJobCandidates || job.Status != models.RequirementJobCompleted || job.Source != models.RequirementSourceLLM {
 		return fmt.Errorf("%w: candidate lineage is unavailable", ErrInvalidRequirement)
+	}
+	request, err := m.store.GetRequirementJobRequest(ctx, jobID)
+	if err != nil {
+		return fmt.Errorf("%w: candidate lineage request is unavailable", ErrInvalidRequirement)
+	}
+	candidateInput, err := decodeCandidateInput(request)
+	if err != nil || candidateInput.MarksHash != marksHash {
+		return fmt.Errorf("%w: candidate marks lineage does not match the normalization request", ErrRequirementLineageConflict)
 	}
 	data, err := json.Marshal(job.Result)
 	if err != nil {
@@ -182,6 +213,31 @@ func (m *Manager) RetryJob(ctx context.Context, id string) error {
 	return m.store.RetryRequirementJob(ctx, id)
 }
 
+func (m *Manager) effectiveMarksForRecording(ctx context.Context, recordingID string, override *[]models.PageMark) ([]models.PageMark, map[string]any, string, error) {
+	recording, err := m.recording.Get(ctx, recordingID)
+	if err != nil {
+		return nil, nil, "", err
+	}
+	marks, digest, err := platformrecording.EffectivePageMarks(recording.Payload, override)
+	if err != nil {
+		return nil, nil, "", err
+	}
+	payload := recording.Payload
+	if override != nil {
+		payload = copyRecordingWithMarks(recording.Payload, marks)
+	}
+	return marks, payload, digest, nil
+}
+
+func copyRecordingWithMarks(recording map[string]any, marks []models.PageMark) map[string]any {
+	copy := make(map[string]any, len(recording)+1)
+	for key, value := range recording {
+		copy[key] = value
+	}
+	copy["marks"] = marks
+	return copy
+}
+
 func (m *Manager) GetRequirement(ctx context.Context, id string) (*models.CollectionRequirement, error) {
 	return m.store.GetCollectionRequirement(ctx, id)
 }
@@ -253,24 +309,39 @@ func (m *Manager) runJob(ctx context.Context, job *models.RequirementJob) {
 	var attemptReport *models.LLMAttemptReport
 	var attemptArtifact any
 	var normalizedSpec *models.CollectionRequirementSpec
+	var effectiveMarks []models.PageMark
 	var err error
 
 	switch job.Kind {
 	case models.RequirementJobCandidates:
+		var input CandidateInput
+		input, err = decodeCandidateInput(job.Request)
 		var recording *models.Recording
-		recording, err = m.recording.Get(ctx, job.RecordingID)
+		if err == nil {
+			recording, err = m.recording.Get(ctx, job.RecordingID)
+		}
+		if err == nil {
+			effectiveMarks, _, err = platformrecording.EffectivePageMarks(recording.Payload, input.MarksOverride)
+		}
 		if err == nil {
 			recorder = newRequirementAttemptRecorder(
 				m.store, job, recording.ContentHash, m.policyFingerprint(),
 			)
 			workflowCtx := llm.WithCompletionTraceSink(ctx, recorder)
 			var candidateResult *CandidateResult
-			candidateResult, metadata, err = m.workflow.GenerateCandidates(workflowCtx, recording.Payload, onProgress, previousAttemptFeedback(job.AttemptCount, job.ErrorMessage))
+			candidateResult, metadata, err = m.workflow.GenerateCandidates(workflowCtx, copyRecordingWithMarks(recording.Payload, effectiveMarks), onProgress, previousAttemptFeedback(job.AttemptCount, job.ErrorMessage))
 			result = candidateResult
 		}
 	case models.RequirementJobNormalize:
 		var input NormalizationInput
 		input, err = decodeNormalizationInput(job.Request)
+		var recording *models.Recording
+		if err == nil {
+			recording, err = m.recording.Get(ctx, job.RecordingID)
+		}
+		if err == nil {
+			effectiveMarks, _, err = platformrecording.EffectivePageMarks(recording.Payload, input.MarksOverride)
+		}
 		if err == nil && input.Requirement != nil {
 			err = ValidateSpec(*input.Requirement)
 			if err == nil {
@@ -286,17 +357,13 @@ func (m *Manager) runJob(ctx context.Context, job *models.RequirementJob) {
 				}
 			}
 		} else if err == nil {
-			var recording *models.Recording
-			recording, err = m.recording.Get(ctx, job.RecordingID)
-			if err == nil {
-				recorder = newRequirementAttemptRecorder(
-					m.store, job, recording.ContentHash, m.policyFingerprint(),
-				)
-				workflowCtx := llm.WithCompletionTraceSink(ctx, recorder)
-				var normalized *NormalizationResult
-				normalized, metadata, err = m.workflow.NormalizeCustom(workflowCtx, recording.Payload, input.CustomText, onProgress, previousAttemptFeedback(job.AttemptCount, job.ErrorMessage))
-				result = normalized
-			}
+			recorder = newRequirementAttemptRecorder(
+				m.store, job, recording.ContentHash, m.policyFingerprint(),
+			)
+			workflowCtx := llm.WithCompletionTraceSink(ctx, recorder)
+			var normalized *NormalizationResult
+			normalized, metadata, err = m.workflow.NormalizeCustom(workflowCtx, copyRecordingWithMarks(recording.Payload, effectiveMarks), input.CustomText, onProgress, previousAttemptFeedback(job.AttemptCount, job.ErrorMessage))
+			result = normalized
 		}
 		if err == nil {
 			normalized := result.(*NormalizationResult)
@@ -315,7 +382,7 @@ func (m *Manager) runJob(ctx context.Context, job *models.RequirementJob) {
 		existing, lookupErr := m.store.GetCollectionRequirementByJob(ctx, job.ID)
 		switch {
 		case lookupErr == nil:
-			same, compareErr := sameRequirementSpec(existing.Requirement, *normalizedSpec)
+			same, compareErr := sameRequirementContent(existing.Requirement, existing.Marks, *normalizedSpec, effectiveMarks)
 			if compareErr != nil {
 				err = fmt.Errorf("compare existing normalized requirement: %w", compareErr)
 			} else if existing.RecordingID != job.RecordingID ||
@@ -337,6 +404,7 @@ func (m *Manager) runJob(ctx context.Context, job *models.RequirementJob) {
 				Source:      job.Source,
 				Status:      models.CollectionRequirementDraft,
 				Requirement: *normalizedSpec,
+				Marks:       effectiveMarks,
 				Owner:       authz.Subject(ctx, "system"),
 			}
 			job.RequirementID = requirementDraft.ID
@@ -449,12 +517,18 @@ func (m *Manager) failJobWithAttemptReport(
 	m.logger.Warn("collection requirement job failed", fields...)
 }
 
-func sameRequirementSpec(left, right models.CollectionRequirementSpec) (bool, error) {
-	leftJSON, err := json.Marshal(left)
+func sameRequirementContent(leftSpec models.CollectionRequirementSpec, leftMarks []models.PageMark, rightSpec models.CollectionRequirementSpec, rightMarks []models.PageMark) (bool, error) {
+	leftJSON, err := json.Marshal(struct {
+		Requirement models.CollectionRequirementSpec `json:"requirement"`
+		Marks       []models.PageMark                `json:"marks,omitempty"`
+	}{Requirement: leftSpec, Marks: leftMarks})
 	if err != nil {
 		return false, err
 	}
-	rightJSON, err := json.Marshal(right)
+	rightJSON, err := json.Marshal(struct {
+		Requirement models.CollectionRequirementSpec `json:"requirement"`
+		Marks       []models.PageMark                `json:"marks,omitempty"`
+	}{Requirement: rightSpec, Marks: rightMarks})
 	if err != nil {
 		return false, err
 	}
@@ -489,6 +563,18 @@ func requirementResultCacheHit(result any) bool {
 		}
 	}
 	return false
+}
+
+func decodeCandidateInput(value any) (CandidateInput, error) {
+	data, err := json.Marshal(value)
+	if err != nil {
+		return CandidateInput{}, err
+	}
+	var input CandidateInput
+	if err := json.Unmarshal(data, &input); err != nil {
+		return CandidateInput{}, err
+	}
+	return input, nil
 }
 
 func decodeNormalizationInput(value any) (NormalizationInput, error) {

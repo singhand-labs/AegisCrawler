@@ -20,6 +20,14 @@
     <section id="step-intent" class="step hidden">
       <h2>步骤 1：选择此次操作的目的</h2>
       <p class="hint" id="intent-hint"></p>
+      <div id="page-marks-panel" class="page-marks-panel hidden">
+        <div class="page-marks-header">
+          <strong>录制标注</strong>
+          <span id="page-marks-count"></span>
+        </div>
+        <p class="hint">这些圈选标注会作为人工意图传给候选需求和 DSL 生成。备注可在这里修改，删除后会重新生成后续工作流。</p>
+        <div id="page-marks-list" class="page-marks-list"></div>
+      </div>
       <div id="candidates-list"></div>
       <div class="custom-intent">
         <label for="custom-description">或者输入你的目的：</label>

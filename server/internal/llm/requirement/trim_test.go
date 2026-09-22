@@ -11,7 +11,7 @@ func bigSnapshot(childCount, childBytes int) timelineItem {
 	for i := 0; i < childCount; i++ {
 		padding := strings.Repeat("x", childBytes)
 		children = append(children, map[string]any{
-			"type":  "element", "tagName": "div",
+			"type": "element", "tagName": "div",
 			"class": padding,
 			"children": []any{
 				map[string]any{"type": "text", "text": padding},

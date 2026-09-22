@@ -154,6 +154,25 @@ func (s *Store) GetRequirementJob(ctx context.Context, id string) (*models.Requi
 	return job, nil
 }
 
+func (s *Store) GetRequirementJobRequest(ctx context.Context, id string) (any, error) {
+	var workspace, requestHash string
+	var requestArtifact []byte
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT workspace_id, request_artifact, request_hash
+		FROM requirement_jobs WHERE id = ? AND workspace_id = ?
+	`, id, workspaceID(ctx)).Scan(&workspace, &requestArtifact, &requestHash); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrRequirementJobNotFound
+		}
+		return nil, err
+	}
+	var request any
+	if err := s.openRequirementArtifact(workspace, "requirement-job", id, "request", requestArtifact, requestHash, &request); err != nil {
+		return nil, err
+	}
+	return request, nil
+}
+
 // ClaimPendingRequirementJob atomically leases the next runnable job across
 // workspaces. The returned request is decrypted only in worker memory.
 func (s *Store) ClaimPendingRequirementJob(ctx context.Context, lease time.Duration) (*models.RequirementJob, error) {
@@ -697,6 +716,12 @@ func (s *Store) RetryRequirementJob(ctx context.Context, id string) error {
 	return nil
 }
 
+type collectionRequirementContent struct {
+	Version     int                              `json:"version,omitempty"`
+	Requirement models.CollectionRequirementSpec `json:"requirement"`
+	Marks       []models.PageMark                `json:"marks,omitempty"`
+}
+
 type preparedCollectionRequirement struct {
 	artifact []byte
 }
@@ -723,7 +748,12 @@ func (s *Store) prepareCollectionRequirement(ctx context.Context, requirement *m
 		requirement.CreatedAt = now
 	}
 	requirement.UpdatedAt = now
-	artifact, hash, err := s.sealRequirementArtifact(requirement.WorkspaceID, "collection-requirement", requirement.ID, "content", requirement.Requirement)
+	content := collectionRequirementContent{
+		Version:     1,
+		Requirement: requirement.Requirement,
+		Marks:       requirement.Marks,
+	}
+	artifact, hash, err := s.sealRequirementArtifact(requirement.WorkspaceID, "collection-requirement", requirement.ID, "content", content)
 	if err != nil {
 		return nil, err
 	}
@@ -774,10 +804,35 @@ func (s *Store) GetCollectionRequirement(ctx context.Context, id string) (*model
 	if err != nil {
 		return nil, err
 	}
-	if err := s.openRequirementArtifact(requirement.WorkspaceID, "collection-requirement", requirement.ID, "content", artifact, requirement.ContentHash, &requirement.Requirement); err != nil {
+	content, err := s.openCollectionRequirementContent(requirement.WorkspaceID, requirement.ID, artifact, requirement.ContentHash)
+	if err != nil {
 		return nil, err
 	}
+	requirement.Requirement = content.Requirement
+	requirement.Marks = content.Marks
 	return requirement, nil
+}
+
+func (s *Store) openCollectionRequirementContent(workspace, id string, artifact []byte, contentHash string) (collectionRequirementContent, error) {
+	var raw json.RawMessage
+	if err := s.openRequirementArtifact(workspace, "collection-requirement", id, "content", artifact, contentHash, &raw); err != nil {
+		return collectionRequirementContent{}, err
+	}
+	var probe map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &probe); err == nil {
+		if _, ok := probe["requirement"]; ok {
+			var content collectionRequirementContent
+			if err := json.Unmarshal(raw, &content); err != nil {
+				return collectionRequirementContent{}, fmt.Errorf("unmarshal collection requirement content: %w", err)
+			}
+			return content, nil
+		}
+	}
+	var legacy models.CollectionRequirementSpec
+	if err := json.Unmarshal(raw, &legacy); err != nil {
+		return collectionRequirementContent{}, fmt.Errorf("unmarshal collection requirement content: %w", err)
+	}
+	return collectionRequirementContent{Requirement: legacy}, nil
 }
 
 func (s *Store) GetCollectionRequirementByJob(ctx context.Context, jobID string) (*models.CollectionRequirement, error) {

@@ -35,6 +35,19 @@ func requirementSpec() models.CollectionRequirementSpec {
 	}
 }
 
+func requirementMark(t *testing.T, note string) models.PageMark {
+	t.Helper()
+	actionIndex, sequence := 1, 2
+	return models.PageMark{
+		ID: "mark-price", CanonicalID: "m_testprice", Timestamp: 1, URL: "https://example.test/list", Role: models.PageMarkRoleField,
+		Note: note, ActionIndex: &actionIndex, SnapshotSequence: &sequence,
+		Element: models.PageMarkElement{
+			Index: 1, TagName: "span", Selector: ".price", StableSelector: ".price",
+			Text: "$10", BoundingRect: models.PageMarkRect{X: 1, Y: 2, Width: 3, Height: 4},
+		},
+	}
+}
+
 func TestRequirementJobArtifactsAreEncryptedScopedAndRetryable(t *testing.T) {
 	s := newEncryptedTestStore(t)
 	ctxA := workspaceContext("alice", authz.DefaultWorkspaceID)
@@ -167,6 +180,69 @@ func TestCollectionRequirementIsEncryptedImmutableAndConfirmable(t *testing.T) {
 	}
 	if _, err := s.GetCollectionRequirement(ctx, requirement.ID); !errors.Is(err, ErrRequirementNotFound) {
 		t.Fatalf("recording deletion retained derived requirement content: %v", err)
+	}
+}
+
+func TestCollectionRequirementPersistsMarksInContentArtifact(t *testing.T) {
+	s := newEncryptedTestStore(t)
+	ctx := workspaceContext("alice", authz.DefaultWorkspaceID)
+	createRequirementTestRecording(t, s, ctx, "recording-marks")
+	requirement := &models.CollectionRequirement{
+		ID: "requirement-marks", RecordingID: "recording-marks", Source: models.RequirementSourceManual,
+		Requirement: requirementSpec(), Marks: []models.PageMark{requirementMark(t, "price field")},
+	}
+	if err := s.CreateCollectionRequirement(ctx, requirement); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.GetCollectionRequirement(ctx, requirement.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Marks) != 1 || got.Marks[0].Note != "price field" || got.Marks[0].CanonicalID == "" {
+		t.Fatalf("marks did not round-trip in requirement content: %#v", got.Marks)
+	}
+	changed := &models.CollectionRequirement{
+		ID: "requirement-marks-note", RecordingID: "recording-marks", Source: models.RequirementSourceManual,
+		Requirement: requirementSpec(), Marks: []models.PageMark{requirementMark(t, "different note")},
+	}
+	if err := s.CreateCollectionRequirement(ctx, changed); err != nil {
+		t.Fatal(err)
+	}
+	if changed.ContentHash == requirement.ContentHash {
+		t.Fatal("mark note changes must affect immutable requirement content hash")
+	}
+}
+
+func TestCollectionRequirementReadsLegacyBareSpecArtifacts(t *testing.T) {
+	s := newEncryptedTestStore(t)
+	ctx := workspaceContext("alice", authz.DefaultWorkspaceID)
+	createRequirementTestRecording(t, s, ctx, "recording-legacy-requirement")
+	requirement := &models.CollectionRequirement{
+		ID: "requirement-legacy", RecordingID: "recording-legacy-requirement", Source: models.RequirementSourceManual,
+		Requirement: requirementSpec(),
+	}
+	if err := s.CreateCollectionRequirement(ctx, requirement); err != nil {
+		t.Fatal(err)
+	}
+	legacyArtifact, legacyHash, err := s.sealRequirementArtifact(requirement.WorkspaceID, "collection-requirement", requirement.ID, "content", requirementSpec())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.Exec(`UPDATE collection_requirements SET content_artifact = ?, content_hash = ? WHERE id = ?`, legacyArtifact, legacyHash, requirement.ID); err == nil {
+		t.Fatal("direct content update should be blocked by immutability trigger")
+	}
+	if _, err := s.db.Exec(`DROP TRIGGER trg_collection_requirements_immutable_content`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.Exec(`UPDATE collection_requirements SET content_artifact = ?, content_hash = ? WHERE id = ?`, legacyArtifact, legacyHash, requirement.ID); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.GetCollectionRequirement(ctx, requirement.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Requirement.Title != requirement.Requirement.Title || len(got.Marks) != 0 {
+		t.Fatalf("legacy bare spec did not read as requirement without marks: %+v", got)
 	}
 }
 

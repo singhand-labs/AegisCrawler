@@ -816,6 +816,81 @@ func TestSelectorEvidenceCatalogAndPromptAreDeterministicallyBounded(t *testing.
 	}
 }
 
+func TestSelectorEvidenceCatalogPublishesUserMarkedMetadataWithoutNotes(t *testing.T) {
+	root := selectorElementForTest("html", nil,
+		selectorElementForTest("body", nil,
+			selectorElementForTest("main", nil,
+				selectorElementForTest("input", map[string]string{"class": "search", "type": "text"}),
+				selectorElementForTest("span", map[string]string{"class": "price"}, selectorTextForTest("$10")),
+				selectorElementForTest("aside", map[string]string{"class": "ad"}, selectorTextForTest("sponsored")),
+			),
+		),
+	)
+	snapshot := selectorSnapshotForTest(0, "https://example.test/list", root)
+	build := func(note string) (SelectorPromptCatalog, string) {
+		catalog, err := BuildSelectorEvidenceCatalog(map[string]any{
+			"meta":      map[string]any{"sanitizationVersion": "extension-v2"},
+			"snapshots": []any{snapshot},
+			"marks": []any{
+				map[string]any{
+					"id": "mark-price", "canonicalId": "m_price", "timestamp": float64(1),
+					"role": "field", "note": note, "url": "https://example.test/list",
+					"element": map[string]any{"selector": ".price", "tagName": "span", "text": "$10"},
+				},
+				map[string]any{
+					"id": "mark-search", "canonicalId": "m_search", "timestamp": float64(2),
+					"role": "input", "note": "search box", "url": "https://example.test/list",
+					"element": map[string]any{"selector": ".search", "tagName": "input"},
+				},
+				map[string]any{
+					"id": "mark-ad", "canonicalId": "m_ad", "timestamp": float64(3),
+					"role": "exclude", "note": "ad block", "url": "https://example.test/list",
+					"element": map[string]any{"selector": ".ad", "tagName": "aside", "text": "sponsored"},
+				},
+			},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		prompt := catalog.PromptEvidenceJSON()
+		var decoded SelectorPromptCatalog
+		if err := json.Unmarshal([]byte(prompt), &decoded); err != nil {
+			t.Fatal(err)
+		}
+		return decoded, prompt
+	}
+	first, prompt := build("price field")
+	if first.Version != selectorPromptCatalogVersion {
+		t.Fatalf("expected current catalog version, got %s", first.Version)
+	}
+	foundField := false
+	foundInput := false
+	foundExclude := false
+	for _, candidate := range first.Candidates {
+		if candidate.UserMarked && candidate.MarkRole == "field" && candidate.MarkID == "m_price" {
+			foundField = true
+		}
+		if candidate.UserMarked && candidate.MarkRole == "input" && candidate.MarkID == "m_search" {
+			foundInput = true
+		}
+		if candidate.UserMarked && candidate.MarkRole == "exclude" {
+			foundExclude = true
+		}
+	}
+	if !foundField || !foundInput || foundExclude {
+		t.Fatalf("user-marked selector metadata mismatch: field=%v input=%v exclude=%v candidates=%#v", foundField, foundInput, foundExclude, first.Candidates)
+	}
+	for _, forbidden := range []string{"price field", "search box", "ad block"} {
+		if strings.Contains(prompt, forbidden) {
+			t.Fatalf("user note leaked into page-text-free selector catalog: %s", prompt)
+		}
+	}
+	second, _ := build("different note")
+	if first.CatalogHash != second.CatalogHash {
+		t.Fatalf("selector catalog hash must not change when only mark note changes: %q != %q", first.CatalogHash, second.CatalogHash)
+	}
+}
+
 func TestSelectorEvidenceBoundsFairlyAcrossStatesAndPrioritizesTheLatestState(t *testing.T) {
 	homeChildren := make([]map[string]any, 0, 96)
 	for index := 0; index < 96; index++ {

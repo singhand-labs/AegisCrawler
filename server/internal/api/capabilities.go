@@ -36,6 +36,7 @@ func (h *Handler) Capabilities(w http.ResponseWriter, _ *http.Request) {
 		Features: CapabilityFeatureSet{
 			RecordingV2: h.cfg.RecordingV2Enabled,
 			WorkflowV2:  h.cfg.WorkflowV2Enabled,
+			PageMarks:   h.cfg.WorkflowV2Enabled,
 			MCP:         h.cfg.MCPEnabled,
 		},
 		RecordingLimits: RecordingLimits{

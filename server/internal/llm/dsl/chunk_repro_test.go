@@ -21,11 +21,11 @@ func TestBuildWorkflowChunksRealDDGRecording(t *testing.T) {
 		t.Fatal(err)
 	}
 	w := &Workflow{cfg: &config.Config{LLMEnabled: true, LLMMaxInputTokens: 40_000, LLMMaxOutputTokens: 1_024}}
-	directBudget, err := w.requestContentBudget(generationSystemPrompt, generationUserPrompt("{}", "{}", "", "", "{}"), nil)
+	directBudget, err := w.requestContentBudget(generationSystemPrompt, generationUserPrompt("{}", "{}", `{"version":"page-marks-v1","marks":[]}`, "", "", "{}"), nil)
 	if err != nil {
 		t.Fatalf("direct budget: %v", err)
 	}
-	analysisBudget, err := w.requestContentBudget(analysisSystemPrompt, analysisUserPrompt(21, 21, "{}", "{}", "{}", ""), nil)
+	analysisBudget, err := w.requestContentBudget(analysisSystemPrompt, analysisUserPrompt(21, 21, "{}", "{}", `{"version":"page-marks-v1","marks":[]}`, "{}", ""), nil)
 	if err != nil {
 		t.Fatalf("analysis budget: %v", err)
 	}

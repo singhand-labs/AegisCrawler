@@ -1,8 +1,30 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ContentRecorder, RecorderOptions } from '../content';
-import type { PageAgentRecording, DomSnapshot } from '../../../src/rule-generator/types';
+import type { PageAgentRecording, DomSnapshot, PageMark } from '../../../src/rule-generator/types';
 
 type PageAgentRecordingType = PageAgentRecording;
+
+function pageMark(overrides: Partial<PageMark> = {}): PageMark {
+  return {
+    id: 'mark-1',
+    timestamp: 1,
+    url: window.location.href,
+    role: 'field',
+    note: 'price field',
+    actionIndex: 0,
+    snapshotSequence: 0,
+    state: window.location.href,
+    element: {
+      index: 1,
+      tagName: 'span',
+      selector: '.price',
+      stableSelector: '.price',
+      text: '$10',
+      boundingRect: { x: 1, y: 2, width: 30, height: 12 },
+    },
+    ...overrides,
+  };
+}
 
 async function flushPromises(): Promise<void> {
   for (let i = 0; i < 50; i++) {
@@ -92,6 +114,71 @@ describe('ContentRecorder', () => {
       const capped = (recorder as unknown as { capRecordingSize: (r: PageAgentRecordingType, max: number) => PageAgentRecordingType }).capRecordingSize(recording, 1000);
       expect(capped.snapshots[0].domTree).toBeUndefined();
       expect(capped.snapshots[1].domTree).toBeDefined();
+    });
+  });
+
+  describe('page marks', () => {
+    it('stores, replaces, and removes v2 page marks', () => {
+      const recorder = new ContentRecorder({ protocolVersion: '2.0.0', captureSnapshotBeforeEachEvent: false });
+      recorder.start();
+
+      recorder.addPageMark(pageMark({ note: 'old' }));
+      recorder.addPageMark(pageMark({ note: 'new' }));
+      expect((recorder as unknown as { recording: PageAgentRecordingType }).recording.marks).toHaveLength(1);
+      expect((recorder as unknown as { recording: PageAgentRecordingType }).recording.marks?.[0].note).toBe('new');
+
+      expect(recorder.removePageMark('mark-1')).toBe(true);
+      expect((recorder as unknown as { recording: PageAgentRecordingType }).recording.marks).toEqual([]);
+      expect(recorder.removePageMark('missing')).toBe(false);
+    });
+
+    it('rejects over-limit marks and over-long notes', () => {
+      const recorder = new ContentRecorder({
+        protocolVersion: '2.0.0',
+        captureSnapshotBeforeEachEvent: false,
+        maxMarks: 1,
+      });
+      recorder.start();
+
+      expect(() => recorder.addPageMark(pageMark({ note: 'x'.repeat(201) }))).toThrow(/note/i);
+      recorder.addPageMark(pageMark({ id: 'm1' }));
+      expect(() => recorder.addPageMark(pageMark({ id: 'm2' }))).toThrow(/maximum mark count/i);
+    });
+
+    it('keeps marks in the returned recording when proxy mode is active', async () => {
+      const controller = {
+        clickElement: vi.fn(async (_index: number) => ({ success: true })),
+        inputText: vi.fn(async (_index: number, _text: string) => ({ success: true })),
+        selectOption: vi.fn(async (_index: number, _optionText: string) => ({ success: true })),
+        scroll: vi.fn(async (_options: unknown) => ({ success: true })),
+        scrollHorizontally: vi.fn(async (_options: unknown) => ({ success: true })),
+        executeJavascript: vi.fn(async (_script: string) => ({ success: true })),
+      };
+      (window as unknown as Record<string, unknown>).PageController = controller;
+      const recorder = new ContentRecorder({ captureSnapshotBeforeEachEvent: false });
+      recorder.start();
+
+      recorder.addPageMark(pageMark());
+      await controller.clickElement(1);
+      const recording = recorder.stop();
+
+      expect(recording.marks).toEqual([pageMark()]);
+      expect(recording.events[0]).toMatchObject({ type: 'click', index: 1 });
+    });
+
+    it('stops with a size-limit when a mark pushes the recording past the byte budget', async () => {
+      const recorder = new ContentRecorder({
+        protocolVersion: '2.0.0',
+        captureSnapshotBeforeEachEvent: false,
+        maxRecordingBytes: 250,
+      });
+      recorder.start();
+
+      recorder.addPageMark(pageMark({ note: 'compact' }));
+      await flushPromises();
+
+      const recording = recorder.stop();
+      expect(recording.termination?.reason).toBe('size-limit');
     });
   });
 

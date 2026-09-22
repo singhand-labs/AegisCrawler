@@ -156,6 +156,47 @@ describe('PageAgentRecording schema', () => {
     })).toBe(false);
   });
 
+  it('validates bounded page marks on recordings', () => {
+    const ajv = new Ajv();
+    addFormats(ajv);
+    const validate = ajv.compile(recordingSchema);
+    const base = {
+      version: '1.0.0',
+      meta: {
+        startUrl: 'https://example.com/',
+        title: 'Marked recording',
+        recordedAt: '2026-09-21T08:00:00Z',
+        domain: 'example.com',
+      },
+      events: [],
+      snapshots: [],
+    };
+    const mark = {
+      id: 'mark-1',
+      timestamp: 1,
+      url: 'https://example.com/',
+      role: 'field',
+      note: '商品标题字段',
+      element: {
+        index: 1,
+        tagName: 'span',
+        selector: '.product-title',
+        stableSelector: '.product-title',
+        text: 'Example',
+        boundingRect: { x: 0, y: 0, width: 10, height: 10 },
+      },
+      actionIndex: 0,
+      snapshotSequence: 0,
+      state: 'https://example.com/',
+      canonicalId: 'canonical-mark-1',
+    };
+
+    expect(validate({ ...base, marks: [mark] })).toBe(true);
+    expect(validate({ ...base, marks: [{ ...mark, role: 'ads' }] })).toBe(false);
+    expect(validate({ ...base, marks: [{ ...mark, note: 'x'.repeat(201) }] })).toBe(false);
+    expect(validate({ ...base, marks: Array.from({ length: 25 }, (_, index) => ({ ...mark, id: `mark-${index}` })) })).toBe(false);
+  });
+
   it('rejects malformed or unbounded DOM sanitization provenance', () => {
     const ajv = new Ajv();
     addFormats(ajv);

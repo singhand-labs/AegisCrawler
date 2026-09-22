@@ -12,7 +12,7 @@ func bigWorkflowSnapshot(childCount, childBytes int) map[string]any {
 		padding := strings.Repeat("x", childBytes)
 		children = append(children, map[string]any{
 			"type": "element", "tagName": "div",
-			"class": padding,
+			"class":    padding,
 			"children": []any{map[string]any{"type": "text", "text": padding}},
 		})
 	}
@@ -59,7 +59,7 @@ func TestBuildWorkflowChunksTrimsOversizedSnapshot(t *testing.T) {
 // Items that already fit pass through without markers.
 func TestBuildWorkflowChunksLeavesSmallRecordingsUnchanged(t *testing.T) {
 	recording := map[string]any{
-		"meta": map[string]any{"sanitizationVersion": "extension-v2"},
+		"meta":      map[string]any{"sanitizationVersion": "extension-v2"},
 		"snapshots": []any{bigWorkflowSnapshot(2, 40)},
 	}
 	chunks, direct, err := buildWorkflowChunks(recording, 64_000, 64_000)

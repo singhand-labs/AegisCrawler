@@ -7,6 +7,7 @@ import type {
   CollectionRequirementSpec,
   RequirementWorkflowResult,
 } from './intent-types';
+import type { PageAgentRecording, PageMark } from '../../../src/rule-generator';
 import type { Mock } from 'vitest';
 
 
@@ -19,6 +20,10 @@ const WIZARD_HTML = `
   <main id="wizard">
     <section id="step-intent" class="step hidden">
       <p class="hint" id="intent-hint"></p>
+      <div id="page-marks-panel" class="page-marks-panel hidden">
+        <span id="page-marks-count"></span>
+        <div id="page-marks-list"></div>
+      </div>
       <div id="candidates-list"></div>
       <textarea id="custom-description"></textarea>
       <button id="manual-structured"></button>
@@ -105,6 +110,53 @@ const sampleRule = {
   ],
 };
 
+function pageMark(overrides: Partial<PageMark> = {}): PageMark {
+  return {
+    id: 'mark-1',
+    timestamp: 1,
+    url: 'https://example.com/',
+    role: 'field',
+    note: '商品标题',
+    element: {
+      index: 1,
+      tagName: 'span',
+      selector: '.product-title',
+      stableSelector: '.product-title',
+      text: 'Product title',
+      boundingRect: { x: 1, y: 2, width: 100, height: 20 },
+    },
+    actionIndex: 1,
+    snapshotSequence: 0,
+    state: 'https://example.com/',
+    ...overrides,
+  };
+}
+
+function recordingWithMarks(marks: PageMark[]): PageAgentRecording {
+  return {
+    version: '2.0.0',
+    meta: { startUrl: 'https://example.com/', title: 'Example', recordedAt: '2026-09-21T00:00:00Z', domain: 'example.com' },
+    events: [],
+    snapshots: [],
+    marks,
+  } as PageAgentRecording;
+}
+
+function textAreaInMark(index = 0): HTMLTextAreaElement {
+  const areas = document.querySelectorAll<HTMLTextAreaElement>('.page-mark-chip textarea');
+  const area = areas[index];
+  expect(area).toBeDefined();
+  return area;
+}
+
+function markButton(label: string, index = 0): HTMLButtonElement {
+  const chip = document.querySelectorAll('.page-mark-chip')[index];
+  expect(chip).toBeDefined();
+  const button = Array.from(chip.querySelectorAll<HTMLButtonElement>('button')).find((item) => item.textContent === label);
+  expect(button).toBeDefined();
+  return button!;
+}
+
 function createSendMessageMock(
   overrides: Record<string, unknown> = {},
 ) {
@@ -118,6 +170,8 @@ function createSendMessageMock(
       return override;
     }
     switch (action) {
+      case 'GET_LAST_RECORDING':
+        return { recording: null };
       case 'GET_REQUIREMENT_WORKFLOW':
         return { success: true, workflowV2: false } as RequirementWorkflowResult;
       case 'PREDICT_INTENT':
@@ -249,6 +303,101 @@ describe('intent-page wizard', () => {
   afterEach(() => {
     delete (globalThis as Record<string, unknown>).chrome;
     vi.restoreAllMocks();
+  });
+
+  it('renders page marks from the recording and seeds a plain-language draft', async () => {
+    const marks = [
+      pageMark({ role: 'listItem', note: '商品卡片' }),
+      pageMark({ id: 'mark-2', role: 'field', note: '价格字段', element: { ...pageMark().element, selector: '.price', stableSelector: '.price' } }),
+    ];
+    const { mod, sendMessage } = await importModule({
+      GET_LAST_RECORDING: { recording: recordingWithMarks(marks) },
+      GET_REQUIREMENT_WORKFLOW: { success: true, workflowV2: true },
+    });
+
+    expect(sendMessage).toHaveBeenCalledWith({ action: 'GET_LAST_RECORDING' });
+    expect(mod.state.pageMarks).toEqual(marks);
+    expect(document.getElementById('page-marks-panel')?.classList.contains('hidden')).toBe(false);
+    expect(document.getElementById('page-marks-count')?.textContent).toBe('2/24');
+    expect(textAreaInMark(0).value).toBe('商品卡片');
+    expect(textAreaInMark(1).value).toBe('价格字段');
+    expect(document.getElementById('page-marks-list')?.textContent).toContain('.price');
+    const custom = document.getElementById('custom-description') as HTMLTextAreaElement;
+    expect(custom.value).toContain('录制时圈选了');
+    expect(custom.value).toContain('商品卡片');
+    expect(custom.value).toContain('价格字段');
+  });
+
+  it('edits and deletes page mark notes while invalidating stale requirement state', async () => {
+    const original = pageMark({ note: '旧标题备注' });
+    const { mod, sendMessage } = await importModule({
+      GET_LAST_RECORDING: { recording: recordingWithMarks([original]) },
+      GET_REQUIREMENT_WORKFLOW: {
+        success: true,
+        workflowV2: true,
+        candidates: [
+          { id: 'r1', confidence: 0.9, requirement: sampleRequirement },
+          { id: 'r2', confidence: 0.8, requirement: sampleRequirement },
+          { id: 'r3', confidence: 0.7, requirement: sampleRequirement },
+        ],
+        job: { id: 'job-1', status: 'completed' },
+      },
+      UPDATE_RECORDING_MARKS: (message: { payload?: { marks?: PageMark[] } }) => ({
+        success: true,
+        marks: message.payload?.marks ?? [],
+      }),
+    });
+    mod.state.requirementId = 'requirement-stale';
+    mod.state.requirementJobId = 'job-1';
+    mod.state.dslWorkflowId = 'workflow-stale';
+    mod.state.requirementReviewReady = true;
+    mod.state.candidatesRequested = true;
+    mod.state.requirementCandidates = [
+      { id: 'r1', confidence: 0.9, requirement: sampleRequirement },
+    ];
+
+    const note = textAreaInMark();
+    note.value = '更新后的标题备注';
+    markButton('保存').click();
+    await flushPromises();
+
+    expect(sendMessage).toHaveBeenCalledWith({
+      action: 'UPDATE_RECORDING_MARKS',
+      payload: { marks: [{ ...original, note: '更新后的标题备注' }] },
+    });
+    expect(mod.state.pageMarks).toHaveLength(1);
+    expect(mod.state.pageMarks[0].note).toBe('更新后的标题备注');
+    expect(mod.state.requirementId).toBeNull();
+    expect(mod.state.requirementJobId).toBeNull();
+    expect(mod.state.dslWorkflowId).toBeNull();
+    expect(mod.state.requirementReviewReady).toBe(false);
+    expect(mod.state.requirementCandidates).toEqual([]);
+    expect((document.getElementById('custom-description') as HTMLTextAreaElement).value).toContain('更新后的标题备注');
+
+    markButton('删除').click();
+    await flushPromises();
+    expect(mod.state.pageMarks).toEqual([]);
+    expect(document.getElementById('page-marks-panel')?.classList.contains('hidden')).toBe(true);
+    expect(sendMessage).toHaveBeenCalledWith({ action: 'UPDATE_RECORDING_MARKS', payload: { marks: [] } });
+  });
+
+  it('does not overwrite a user-authored custom intent when marks change', async () => {
+    const original = pageMark({ note: '初始备注' });
+    await importModule({
+      GET_LAST_RECORDING: { recording: recordingWithMarks([original]) },
+      GET_REQUIREMENT_WORKFLOW: { success: true, workflowV2: true },
+      UPDATE_RECORDING_MARKS: (message: { payload?: { marks?: PageMark[] } }) => ({ success: true, marks: message.payload?.marks ?? [] }),
+    });
+    const custom = document.getElementById('custom-description') as HTMLTextAreaElement;
+    custom.value = '用户自己写的采集目的';
+    custom.dispatchEvent(new Event('input'));
+
+    const note = textAreaInMark();
+    note.value = '新的备注';
+    markButton('保存').click();
+    await flushPromises();
+
+    expect(custom.value).toBe('用户自己写的采集目的');
   });
 
   it('loads predictions on init', async () => {

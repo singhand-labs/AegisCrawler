@@ -1432,10 +1432,11 @@ func (s *Store) ApproveDSLWorkflow(ctx context.Context, workflowID string, opts 
 		} else if sourceKind != "" || sourceAuthority != "" || sourceArtifactHash != "" || sourceExportHash != "" {
 			return ErrDSLWorkflowState
 		}
-		var requirement models.CollectionRequirementSpec
-		if err := s.openRequirementArtifact(workspace, "collection-requirement", requirementID, "content", requirementArtifact, requirementHash, &requirement); err != nil {
+		requirementContent, err := s.openCollectionRequirementContent(workspace, requirementID, requirementArtifact, requirementHash)
+		if err != nil {
 			return err
 		}
+		requirement := requirementContent.Requirement
 		inputSchema, err := rulecontract.BuildRequirementInputSchema(requirement)
 		if err != nil {
 			return err
