@@ -101,6 +101,49 @@ describe('PageAgentRecording schema', () => {
     expect(valid).toBe(true);
   });
 
+  it('accepts v2 reference snapshots and rejects snapshots that are neither full nor references', () => {
+    const ajv = new Ajv();
+    addFormats(ajv);
+    const validate = ajv.compile(recordingSchema);
+    const base = {
+      version: '2.0.0',
+      meta: {
+        startUrl: 'https://example.com/',
+        title: 'Dedup references',
+        recordedAt: '2026-09-22T08:00:00Z',
+        endedAt: '2026-09-22T08:01:00Z',
+        domain: 'example.com',
+        semanticDomVersion: '1',
+        sanitizationVersion: 'extension-v2',
+      },
+      limits: { maxActions: 500, maxDurationMs: 7200000, maxBytes: 26214400, warningThreshold: 0.8 },
+      warnings: [],
+      termination: { reason: 'user', message: 'done', timestamp: 2, complete: true },
+      events: [{ type: 'click', index: 1, timestamp: 1 }],
+    };
+    const contentSnapshot = {
+      timestamp: 0,
+      url: 'https://example.com/',
+      phase: 'initial',
+      sequence: 0,
+      selectorMap: {},
+      domTree: { type: 'element', tagName: 'html' },
+      capture: { status: 'complete', nodeCount: 2, redactionCount: 0, removedNodeCount: 0, frames: [] },
+    };
+    const reference = { timestamp: 1, url: 'https://example.com/', selectorMap: {}, phase: 'before-action', sequence: 1, actionIndex: 0, ref: 0 };
+
+    // A v2 snapshot may replace its duplicated content with a back-reference
+    // to an earlier full snapshot's sequence.
+    expect(validate({ ...base, snapshots: [contentSnapshot, reference, { ...contentSnapshot, phase: 'final', sequence: 2 }] })).toBe(true);
+    expect(validate({ ...base, snapshots: [contentSnapshot, { ...reference, ref: -1 }] })).toBe(false);
+    // Neither a full snapshot (no domTree/capture) nor a reference (no ref):
+    // not a valid variant.
+    expect(validate({
+      ...base,
+      snapshots: [contentSnapshot, { timestamp: 1, url: 'https://example.com/', phase: 'final', sequence: 1 }],
+    })).toBe(false);
+  });
+
   it('rejects incomplete v2 recordings without limits, termination, and two snapshots', () => {
     const ajv = new Ajv();
     addFormats(ajv);

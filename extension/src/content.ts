@@ -237,6 +237,19 @@ export class ContentRecorder {
   private backgroundResumePromise: Promise<boolean> | null = null;
   private markOverlay: PageMarkOverlay | null = null;
   private recordingHud: RecordingHud | null = null;
+  /**
+   * Canonical content strings of the most recent full (non-reference) v2
+   * snapshot, used to collapse identical adjacent snapshots into references.
+   * Heavy pages can carry ~1.5 MB per snapshot; consecutive actions on an
+   * unchanged page otherwise duplicate that payload for every event.
+   */
+  private lastContentSnapshot: {
+    sequence: number;
+    url: string;
+    selectorMap: string;
+    domTree: string;
+    capture: string;
+  } | null = null;
   // H-1: incremental byte-length tracking. Maintained per-push to avoid the
   // O(n²) cost of JSON.stringify(this.recording) on every event. Recalibrated
   // to the exact full-serialization value at checkpoint intervals.
@@ -348,10 +361,13 @@ export class ContentRecorder {
     }
 
     // Merged cross-origin state can carry a stale 'final' snapshot that is
-    // not last; replace any such snapshot so the required phase ordering
-    // (initial ... final-last) always holds after an explicit stop.
+    // not last; drop any such snapshot so the required phase ordering
+    // (initial ... final-last) always holds after an explicit stop. Filter
+    // in place: reassigning the array would silently drop the wrapped push
+    // installed by wrapRecordingArrays (v2 identical-snapshot dedup and the
+    // v1 FIFO bound both live there).
     if (this.isV2()) {
-      this.recording.snapshots = this.recording.snapshots.filter((snapshot) => snapshot.phase !== 'final');
+      this.removeFinalSnapshotsInPlace();
       this.recording.snapshots.push(this.captureLocalSnapshot(Date.now(), 'final'));
     }
 
@@ -377,9 +393,10 @@ export class ContentRecorder {
       this.flushScrollTimeouts();
       await this.eventQueue;
       try {
-        // Replace any stale merged 'final' so it is always the last snapshot.
-        this.recording!.snapshots = this.recording!.snapshots
-          .filter((snapshot) => snapshot.phase !== 'final');
+        // Replace any stale merged 'final' so it is always the last
+        // snapshot — in place, so the wrapped push (identical-snapshot
+        // dedup) installed at start keeps working for the new final push.
+        this.removeFinalSnapshotsInPlace();
         await this.captureSnapshot(Date.now(), 'final');
       } catch (error) {
         reason = 'capture-error';
@@ -392,6 +409,21 @@ export class ContentRecorder {
       return await this.stopPromise;
     } finally {
       this.stopPromise = null;
+    }
+  }
+
+  /** Remove existing 'final' snapshots from the live array without replacing
+   *  it — wrapRecordingArrays installs the dedup/FIFO behavior on the array
+   *  object itself, and a reassignment would silently discard it. */
+  private removeFinalSnapshotsInPlace(): void {
+    if (!this.recording) return;
+    for (let index = this.recording.snapshots.length - 1; index >= 0; index -= 1) {
+      if (this.recording.snapshots[index]?.phase === 'final') {
+        const removed = this.recording.snapshots.splice(index, 1);
+        for (const snapshot of removed) {
+          this.currentByteLength -= ContentRecorder.computeItemByteLength(snapshot);
+        }
+      }
     }
   }
 
@@ -1039,6 +1071,9 @@ export class ContentRecorder {
   }
 
   private wrapRecordingArrays(recording: PageAgentRecording): void {
+    // Seed identical-adjacent-snapshot dedup from any snapshots already in
+    // the recording (fresh start: none; resume: possibly containing refs).
+    this.restoreSnapshotDedupBaseline(recording);
     const maxEvents = this.options.maxEvents ?? (recording.version === '2.0.0' ? 500 : 5000);
     const maxSnapshots = this.options.maxSnapshots ?? 200;
 
@@ -1077,9 +1112,19 @@ export class ContentRecorder {
           const shifted = recording.snapshots.shift();
           if (shifted) this.currentByteLength -= ContentRecorder.computeItemByteLength(shifted);
         }
-        const result = originalSnapshotsPush(...items);
-        // H-1: track bytes incrementally per snapshot.
-        for (const item of items) {
+        // V2: collapse snapshots whose content (url, selectorMap, domTree,
+        // capture) is exactly identical to the last content snapshot into
+        // lightweight references. Identical content is equivalent per-action
+        // evidence, so the contract keeps one snapshot per action while the
+        // payload is stored once. Positional fields (phase, sequence,
+        // actionIndex, timestamp) stay per-snapshot.
+        const pushed: DomSnapshot[] = recording.version === '2.0.0'
+          ? items.map((item) => this.deduplicateSnapshot(item))
+          : items;
+        const result = originalSnapshotsPush(...pushed);
+        // H-1: track bytes incrementally per snapshot (references are small,
+        // so the byte budget now reflects the deduplicated payload).
+        for (const item of pushed) {
           this.currentByteLength += ContentRecorder.computeItemByteLength(item);
         }
         this.snapshotCount = recording.snapshots.length;
@@ -1089,6 +1134,65 @@ export class ContentRecorder {
       writable: true,
       configurable: true,
     });
+  }
+
+  /**
+   * Returns a reference snapshot when the candidate's content equals the last
+   * content snapshot; otherwise remembers the candidate as the new content
+   * baseline and returns it unchanged. Snapshots without a domTree (capture
+   * failures) never participate: they are already small and carry no
+   * referenceable content.
+   */
+  private deduplicateSnapshot(candidate: DomSnapshot): DomSnapshot {
+    if (candidate.domTree === undefined) return candidate;
+    if (this.snapshotContentEqualsBaseline(candidate)) {
+      const reference: DomSnapshot = {
+        timestamp: candidate.timestamp,
+        url: candidate.url,
+        selectorMap: {},
+        phase: candidate.phase,
+        sequence: candidate.sequence,
+        actionIndex: candidate.actionIndex,
+        ref: this.lastContentSnapshot!.sequence,
+      };
+      return reference;
+    }
+    this.rememberContentSnapshot(candidate);
+    return candidate;
+  }
+
+  private snapshotContentEqualsBaseline(candidate: DomSnapshot): boolean {
+    const baseline = this.lastContentSnapshot;
+    if (!baseline) return false;
+    return baseline.url === JSON.stringify(candidate.url)
+      && baseline.capture === JSON.stringify(candidate.capture ?? null)
+      && baseline.selectorMap === JSON.stringify(candidate.selectorMap ?? {})
+      && baseline.domTree === JSON.stringify(candidate.domTree ?? null);
+  }
+
+  private rememberContentSnapshot(snapshot: DomSnapshot): void {
+    this.lastContentSnapshot = {
+      sequence: snapshot.sequence ?? this.snapshotSequence - 1,
+      url: JSON.stringify(snapshot.url),
+      selectorMap: JSON.stringify(snapshot.selectorMap ?? {}),
+      domTree: JSON.stringify(snapshot.domTree ?? null),
+      capture: JSON.stringify(snapshot.capture ?? null),
+    };
+  }
+
+  /** Seed the dedup baseline from the newest full snapshot already stored in
+   *  the recording (covers both a fresh start and resume from a checkpoint
+   *  that itself contains references). */
+  private restoreSnapshotDedupBaseline(recording: PageAgentRecording): void {
+    this.lastContentSnapshot = null;
+    if (recording.version !== '2.0.0') return;
+    for (let index = recording.snapshots.length - 1; index >= 0; index -= 1) {
+      const snapshot = recording.snapshots[index];
+      if (snapshot?.domTree !== undefined) {
+        this.rememberContentSnapshot(snapshot);
+        return;
+      }
+    }
   }
 
   private startSelectorCleanup(): void {
@@ -1257,6 +1361,15 @@ export class ContentRecorder {
   private linkSnapshotToNextEvent(snapshot: DomSnapshot | void): void {
     if (snapshot?.phase === 'before-action' && this.recording) {
       snapshot.actionIndex = this.recording.events.length;
+      // The stored copy may be a deduplicated reference snapshot distinct
+      // from this candidate object (captures can also resolve out of order),
+      // so write the action link through to the stored snapshot by sequence.
+      if (snapshot.sequence !== undefined) {
+        const stored = this.recording.snapshots.find((item) => item.sequence === snapshot.sequence);
+        if (stored && stored !== snapshot) {
+          stored.actionIndex = snapshot.actionIndex;
+        }
+      }
     }
   }
 

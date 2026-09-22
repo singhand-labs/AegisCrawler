@@ -215,6 +215,15 @@ export interface DomSnapshot {
   sequence?: number;
   actionIndex?: number;
   capture?: SnapshotCaptureReport;
+  /**
+   * Reference snapshots (v2): when a snapshot's content (url, selectorMap,
+   * domTree, capture) is exactly identical to an earlier content snapshot,
+   * the client stores only this pointer to that snapshot's `sequence`
+   * instead of duplicating the payload. Identical content is equivalent
+   * per-action evidence, so consumers resolve refs to the referenced
+   * content; the server expands references at ingest.
+   */
+  ref?: number;
 }
 
 export interface FrameCaptureReport {

@@ -62,6 +62,13 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (*models.Record
 		return nil, fmt.Errorf("%w: got %s, limit %s", ErrDurationLimitExceeded, endedAt.Sub(startedAt), maxDuration)
 	}
 
+	// Resolve client-side snapshot references before sanitize/archive so every
+	// downstream consumer keeps seeing full snapshots. Invalid references
+	// fail closed rather than silently dropping per-action evidence.
+	if err := ExpandSnapshotReferences(input.Payload); err != nil {
+		return nil, err
+	}
+
 	sanitized, report := Sanitize(input.Payload)
 	archive, stats, err := BuildArchive(sanitized)
 	if err != nil {

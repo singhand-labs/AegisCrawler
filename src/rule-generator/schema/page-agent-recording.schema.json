@@ -53,7 +53,10 @@
           "snapshots": {
             "minItems": 2,
             "items": {
-              "required": ["phase", "sequence", "capture", "domTree"]
+              "anyOf": [
+                { "required": ["phase", "sequence", "capture", "domTree"] },
+                { "required": ["phase", "sequence", "ref"] }
+              ]
             },
             "allOf": [
               {
@@ -168,7 +171,8 @@
         "sequence": { "type": "integer", "minimum": 0 },
         "actionIndex": { "type": "integer", "minimum": 0 },
         "capture": { "$ref": "#/definitions/capture" },
-        "domTree": { "$ref": "#/definitions/domNode" }
+        "domTree": { "$ref": "#/definitions/domNode" },
+        "ref": { "type": "integer", "minimum": 0 }
       }
     },
     "domNode": {

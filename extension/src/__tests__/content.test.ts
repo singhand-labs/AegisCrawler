@@ -32,6 +32,16 @@ async function flushPromises(): Promise<void> {
   }
 }
 
+
+/** Follow a snapshot's ref pointer to its content snapshot (v2 reference
+ *  snapshots store identical content once; consumers resolve by sequence). */
+function resolveSnapshot(recording: { snapshots: Array<{ sequence?: number; ref?: number; domTree?: unknown }> }, snapshot: { sequence?: number; ref?: number; domTree?: unknown }) {
+  if (snapshot?.ref === undefined) return snapshot;
+  const target = recording.snapshots.find((item) => item.sequence === snapshot.ref);
+  if (!target) throw new Error(`snapshot ref ${snapshot.ref} cannot be resolved`);
+  return target;
+}
+
 describe('ContentRecorder', () => {
   beforeEach(() => {
     document.body.innerHTML = '';
@@ -1904,11 +1914,19 @@ describe('ContentRecorder', () => {
       document.getElementById('mutate')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
       await flushPromises();
       const recording = await recorder.stopAsync();
+      const initial = recording.snapshots.find((snapshot) => snapshot.phase === 'initial');
       const beforeAction = recording.snapshots.find((snapshot) => snapshot.phase === 'before-action');
       const final = recording.snapshots.find((snapshot) => snapshot.phase === 'final');
 
-      expect(JSON.stringify(beforeAction?.domTree)).toContain('before click');
-      expect(JSON.stringify(beforeAction?.domTree)).not.toContain('after click');
+      // The page is identical between initial and the pre-action capture, so
+      // the before-action snapshot is stored as a reference — resolving it
+      // must still yield the provably pre-mutation DOM.
+      expect(beforeAction?.ref).toBe(initial?.sequence);
+      expect(beforeAction?.actionIndex).toBe(0);
+      const resolved = resolveSnapshot(recording, beforeAction!);
+      expect(JSON.stringify(resolved?.domTree)).toContain('before click');
+      expect(JSON.stringify(resolved?.domTree)).not.toContain('after click');
+      expect(final?.ref).toBeUndefined();
       expect(JSON.stringify(final?.domTree)).toContain('after click');
     });
 
@@ -1949,6 +1967,105 @@ describe('ContentRecorder', () => {
       expect(recording.events).toHaveLength(2);
       expect(beforeActions.map((snapshot) => snapshot.actionIndex)).toEqual([0, 1]);
       expect(recording.snapshots.map((snapshot) => snapshot.sequence)).toEqual([0, 1, 2, 3]);
+    });
+
+    it('collapses identical adjacent snapshots into references and keeps per-action identity', async () => {
+      document.body.innerHTML = '<ul>' + '<li>item</li>'.repeat(40) + '</ul><button id="one">One</button><button id="two">Two</button>';
+      const recorder = new ContentRecorder({ protocolVersion: '2.0.0', maxEvents: 10 });
+      recorder.start();
+      await flushPromises();
+
+      document.getElementById('one')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      document.getElementById('two')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await flushPromises();
+      const recording = await recorder.stopAsync();
+
+      // initial + two pre-action snapshots are identical page states:
+      // [full, ref, ref], then the final snapshot is also identical -> ref.
+      expect(recording.snapshots).toHaveLength(4);
+      const [initial, refA, refB, finalRef] = recording.snapshots;
+      expect(initial.ref).toBeUndefined();
+      expect(initial.domTree).toBeDefined();
+      expect(refA.ref).toBe(initial.sequence);
+      expect(refA.phase).toBe('before-action');
+      expect(refA.actionIndex).toBe(0);
+      expect(refA.domTree).toBeUndefined();
+      expect(refB.ref).toBe(initial.sequence);
+      expect(refB.actionIndex).toBe(1);
+      expect(finalRef.ref).toBe(initial.sequence);
+      expect(finalRef.phase).toBe('final');
+      // Reference snapshots are placeholders: the payload is stored once.
+      // (Real full snapshots are ~1MB+ where this is a >99% cut; the jsdom
+      // fixture page is only ~6KB, so the placeholder's own fixed fields
+      // dominate — bound accordingly.)
+      const bytes = (value: unknown) => new TextEncoder().encode(JSON.stringify(value ?? null)).length;
+      expect(bytes(refA)).toBeLessThan(bytes(initial) / 40);
+      const totalBytes = recording.snapshots.reduce((sum, snapshot) => sum + bytes(snapshot), 0);
+      expect(totalBytes).toBeLessThan(bytes(initial) * 2.5);
+    });
+
+    it('keeps a full snapshot when the page content changes between actions', async () => {
+      document.body.innerHTML = '<p id="state">v1</p><button id="mut">Mutate</button>';
+      document.getElementById('mut')!.addEventListener('click', () => {
+        document.getElementById('state')!.textContent = 'v2';
+      });
+      const recorder = new ContentRecorder({ protocolVersion: '2.0.0', maxEvents: 10 });
+      recorder.start();
+      await flushPromises();
+
+      document.getElementById('mut')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await flushPromises();
+      const recording = await recorder.stopAsync();
+
+      // initial vs pre-action are identical (capture precedes the handler) —
+      // the pre-action snapshot references it — but the mutated final page
+      // must stay a full snapshot or the mutation evidence is lost.
+      const initial = recording.snapshots.find((snapshot) => snapshot.phase === 'initial');
+      const beforeAction = recording.snapshots.find((snapshot) => snapshot.phase === 'before-action');
+      const final = recording.snapshots.find((snapshot) => snapshot.phase === 'final');
+      expect(beforeAction?.ref).toBe(initial?.sequence);
+      expect(final?.ref).toBeUndefined();
+      expect(JSON.stringify(final?.domTree)).toContain('v2');
+    });
+
+    it('seeds the dedup baseline from a restored recording containing references', async () => {
+      document.body.innerHTML = '<button id="go">Go</button>';
+      const recorder = new ContentRecorder({ protocolVersion: '2.0.0', maxEvents: 10 });
+      recorder.start();
+      await flushPromises();
+      document.getElementById('go')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await flushPromises();
+      const first = await recorder.stopAsync();
+      // stop() reset the recorder; restart from the finished recording the
+      // way the resume path does and capture once more on the same page.
+      const resumed = new ContentRecorder({ protocolVersion: '2.0.0', maxEvents: 10 });
+      const internals = resumed as unknown as {
+        recording: typeof first;
+        recordingFlag: boolean;
+        lastRecordedUrl: string;
+        wrapRecordingArrays(recording: typeof first): void;
+      };
+      internals.recording = JSON.parse(JSON.stringify(first));
+      internals.recordingFlag = true;
+      internals.lastRecordedUrl = first.meta.startUrl;
+      // Resume wraps this.recording's own arrays (never a throwaway copy) and
+      // re-seeds the dedup baseline from the stored snapshots.
+      internals.wrapRecordingArrays(internals.recording);
+      // Push a fresh capture of the same page through the wrapped push: all
+      // content fields (url, selectorMap, domTree, capture) copied from the
+      // initial snapshot, only positional fields differ.
+      const snapshot = {
+        ...JSON.parse(JSON.stringify(first.snapshots[0])),
+        timestamp: Date.now(),
+        phase: 'final' as const,
+        sequence: 99,
+      };
+      internals.recording.snapshots.push(snapshot);
+      const last = internals.recording.snapshots[internals.recording.snapshots.length - 1];
+      // Same page content as the referenced baseline -> the restored push
+      // must collapse to a reference, proving the baseline was re-seeded.
+      expect(last.ref).toBe(first.snapshots[0].sequence);
+      expect(last.domTree).toBeUndefined();
     });
 
     it('marks an iframe snapshot partial when frame aggregation is unavailable', async () => {
