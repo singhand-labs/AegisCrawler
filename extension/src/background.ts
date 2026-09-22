@@ -139,6 +139,8 @@ let serverKeys: ServerKeys = {};
 let activeRecording: ActiveRecordingSession | null = null;
 let lastCapabilities: RecordingCapabilities | null = null;
 const RECORDING_SESSION_KEY = 'oc_recording_session';
+// Wizard tab id for openIntentWizardIfAbsent dedup (tabs permission-free).
+const INTENT_WIZARD_TAB_KEY = 'oc_intent_wizard_tab';
 // Once-a-minute self-wake while a recording is active; see
 // updateRecordingKeepAlive for why it exists.
 const RECORDING_KEEPALIVE_ALARM_NAME = 'recording-state-keepalive';
@@ -407,6 +409,32 @@ function updateRecordingBadge(isRecording: boolean): void {
     }
   } catch {
     // Older Chrome without chrome.action or a revoked context: ignore.
+  }
+}
+
+/** Open the intent wizard unless one is already open. Used by background-side
+ *  stop paths (auto limit-stop) so the user always lands in the wizard no
+ *  matter which surface ended the recording. Without the "tabs" permission
+ *  the extension cannot see any chrome-extension:// tab's url or title, so
+ *  dedup tracks the wizard tab id we created and probes it with tabs.get. */
+async function openIntentWizardIfAbsent(): Promise<void> {
+  try {
+    const stored = await chrome.storage.session.get(INTENT_WIZARD_TAB_KEY);
+    const wizardTabId = stored[INTENT_WIZARD_TAB_KEY] as number | undefined;
+    if (typeof wizardTabId === 'number') {
+      try {
+        await chrome.tabs.get(wizardTabId);
+        return; // still open
+      } catch {
+        // Tab was closed; recreate below.
+      }
+    }
+    const tab = await chrome.tabs.create({ url: chrome.runtime.getURL('intent/intent-page.html') });
+    if (typeof tab?.id === 'number') {
+      await chrome.storage.session.set({ [INTENT_WIZARD_TAB_KEY]: tab.id }).catch(() => undefined);
+    }
+  } catch (err) {
+    console.warn('[background] failed to open intent wizard:', err);
   }
 }
 
@@ -1676,6 +1704,12 @@ async function handleMessage(
         await recordingStore.set(payload.recording);
         await saveActiveRecording(null);
         if (payload.recording.version === '2.0.0' && payload.recording.termination?.complete) {
+          // An auto-stopped recording (size/duration/action limit) used to
+          // end in total silence: the user never learned the recording ended,
+          // and a failed upload was only a console.warn. Continue the exact
+          // manual-stop UX instead — the wizard probes/retries persistence
+          // and surfaces upload failures on its own.
+          void openIntentWizardIfAbsent();
           persistRecordingV2(payload.recording).catch((error) =>
             console.warn('[background] automatic recording persistence failed:', error instanceof Error ? error.message : String(error)),
           );
@@ -1784,6 +1818,23 @@ async function handleMessage(
 
     case 'STOP_RECORDING': {
       const session = await loadActiveRecording();
+      // Idempotent stop: an auto limit-stop (size/duration/action) already
+      // finalized and stored a complete recording and cleared the session.
+      // Draining a dead content script again would only time out after 30s,
+      // so return the stored recording — the popup continues into the wizard
+      // exactly like a manual stop and retries any failed upload.
+      if (!session) {
+        const stored = await recordingStore.get();
+        if (stored?.version === '2.0.0' && stored.termination?.complete) {
+          let persistenceWarning: string | undefined;
+          try {
+            await persistRecordingV2(stored);
+          } catch (error) {
+            persistenceWarning = error instanceof Error ? error.message : String(error);
+          }
+          return { success: true, recording: stored, persistenceWarning };
+        }
+      }
       const tab = session ? { id: session.tabId } : await getActiveTab();
       if (!tab?.id) {
         return { success: false, error: '没有活动标签页' };

@@ -347,6 +347,83 @@ describe('background service worker', () => {
       expect(alarms.clear).toHaveBeenCalledWith('recording-state-keepalive');
     });
 
+    const completeV2Recording = () => ({
+      version: '2.0.0',
+      meta: { startUrl: 'https://example.com/', title: 'Example', recordedAt: '2026-07-06T00:00:00Z', domain: 'example.com' },
+      events: [],
+      snapshots: [],
+      termination: { reason: 'size-limit', complete: true, timestamp: Date.now() },
+    });
+
+    it('opens the intent wizard when a recording auto-stops at a limit', async () => {
+      await sendMessage({ action: 'START_RECORDING' });
+      const tabsCreate = chromeMock.mock.tabs.create;
+      tabsCreate.mockClear();
+      const sender = { tab: { id: 42 }, frameId: 0 };
+      await sendMessage(
+        { action: 'RECORDING_STATUS', payload: { status: 'stopped', message: 'size', recording: completeV2Recording() } },
+        sender,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(tabsCreate).toHaveBeenCalledWith({
+        url: 'chrome-extension://fake-id/intent/intent-page.html',
+      });
+      const state = (await sendMessage({ action: 'GET_STATE' })) as { state: string };
+      expect(state.state).toBe('idle');
+    });
+
+    it('does not stack a second wizard tab when the tracked one is alive', async () => {
+      await sendMessage({ action: 'START_RECORDING' });
+      // Simulate a previously created wizard tab whose id is tracked in
+      // session storage and whose tabs.get probe still succeeds.
+      chromeMock.sessionStorage['oc_intent_wizard_tab'] = 321;
+      chromeMock.mock.tabs.get.mockImplementation(async (tabId: number) => ({ id: tabId, status: 'complete' }));
+      const tabsCreate = chromeMock.mock.tabs.create;
+      tabsCreate.mockClear();
+      await sendMessage(
+        { action: 'RECORDING_STATUS', payload: { status: 'stopped', message: 'size', recording: completeV2Recording() } },
+        { tab: { id: 42 }, frameId: 0 },
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(chromeMock.mock.tabs.get).toHaveBeenCalledWith(321);
+      expect(tabsCreate).not.toHaveBeenCalled();
+    });
+
+    it('recreates the wizard tab after the tracked one is closed', async () => {
+      await sendMessage({ action: 'START_RECORDING' });
+      chromeMock.sessionStorage['oc_intent_wizard_tab'] = 322;
+      chromeMock.mock.tabs.get.mockRejectedValueOnce(new Error('No tab with id 322'));
+      const tabsCreate = chromeMock.mock.tabs.create;
+      tabsCreate.mockClear();
+      await sendMessage(
+        { action: 'RECORDING_STATUS', payload: { status: 'stopped', message: 'size', recording: completeV2Recording() } },
+        { tab: { id: 42 }, frameId: 0 },
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(tabsCreate).toHaveBeenCalledWith({ url: 'chrome-extension://fake-id/intent/intent-page.html' });
+      expect(chromeMock.sessionStorage['oc_intent_wizard_tab']).toBe(123);
+    });
+
+    it('STOP after an auto-stop idempotently returns the stored complete recording', async () => {
+      await sendMessage({ action: 'START_RECORDING' });
+      const recording = completeV2Recording();
+      await sendMessage(
+        { action: 'RECORDING_STATUS', payload: { status: 'stopped', message: 'size', recording } },
+        { tab: { id: 42 }, frameId: 0 },
+      );
+      chromeMock.mock.tabs.sendMessage.mockClear();
+      const response = (await sendMessage({ action: 'STOP_RECORDING' })) as {
+        success?: boolean;
+        recording?: { termination?: { reason?: string } };
+        persistenceWarning?: string;
+      };
+      expect(response.success).toBe(true);
+      expect(response.recording?.termination?.reason).toBe('size-limit');
+      // Must not drain the already-dead recording tab again (30s timeout path).
+      expect(chromeMock.mock.tabs.sendMessage).not.toHaveBeenCalled();
+      expect(typeof response.persistenceWarning).toBe('string');
+    });
+
     it('self-heals the REC badge when the keepalive alarm fires', async () => {
       const badge = chromeMock.mock.action;
       if (!badge) throw new Error('action mock missing');
