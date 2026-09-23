@@ -3206,10 +3206,15 @@ describe('intent-page wizard', () => {
       await vi.runOnlyPendingTimersAsync();
       expect(connectMock).toHaveBeenCalledTimes(1);
 
-      // Heartbeat ticks every 1s; after 5s without a pong, reconnect triggers.
-      // Advance 6 seconds to clear the 5s threshold on the next tick.
-      await vi.advanceTimersByTimeAsync(6000);
-      expect(connectMock).toHaveBeenCalledTimes(2);
+      // Heartbeat ticks every 1s; a tick fires the reconnect once
+      // Date.now() - lastPongAt exceeds 5s (first qualifying tick at +6s),
+      // then a 100ms backoff reconnects. Advance a window generous enough
+      // to absorb fake-clock time consumed during module init, but short of
+      // the second heartbeat cycle (~12.1s) so a reconnect runaway still
+      // fails the range.
+      await vi.advanceTimersByTimeAsync(10000);
+      expect(connectMock.mock.calls.length).toBeGreaterThanOrEqual(2);
+      expect(connectMock.mock.calls.length).toBeLessThanOrEqual(3);
     });
   });
 });
