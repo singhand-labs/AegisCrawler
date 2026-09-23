@@ -144,6 +144,59 @@ describe('PageAgentRecording schema', () => {
     })).toBe(false);
   });
 
+  it('accepts v2 snapshot deltas and rejects malformed patches', () => {
+    const ajv = new Ajv();
+    addFormats(ajv);
+    const validate = ajv.compile(recordingSchema);
+    const base = {
+      version: '2.0.0',
+      meta: {
+        startUrl: 'https://example.com/',
+        title: 'Snapshot deltas',
+        recordedAt: '2026-09-23T08:00:00Z',
+        endedAt: '2026-09-23T08:01:00Z',
+        domain: 'example.com',
+        semanticDomVersion: '1',
+        sanitizationVersion: 'extension-v2',
+      },
+      limits: { maxActions: 500, maxDurationMs: 7200000, maxBytes: 26214400, warningThreshold: 0.8 },
+      warnings: [],
+      termination: { reason: 'user', message: 'done', timestamp: 2, complete: true },
+      events: [{ type: 'click', index: 1, timestamp: 1 }],
+    };
+    const contentSnapshot = {
+      timestamp: 0,
+      url: 'https://example.com/',
+      selectorMap: {},
+      phase: 'initial',
+      sequence: 0,
+      domTree: { type: 'element', tagName: 'html', children: [{ type: 'text', text: 'v1' }] },
+      capture: { status: 'complete', nodeCount: 2, redactionCount: 0, removedNodeCount: 0, frames: [] },
+    };
+    const delta = {
+      timestamp: 1,
+      url: 'https://example.com/',
+      selectorMap: {},
+      phase: 'before-action',
+      sequence: 1,
+      actionIndex: 0,
+      base: 0,
+      patch: [
+        { op: 'replace', path: '/domTree/children/0/text', value: 'v2' },
+        { op: 'remove', path: '/capture/nodeCount' },
+      ],
+    };
+
+    expect(validate({ ...base, snapshots: [contentSnapshot, delta, { ...contentSnapshot, phase: 'final', sequence: 2 }] })).toBe(true);
+    // Missing base, unknown op, unrooted path, extra op properties.
+    const { base: _omit, ...deltaWithoutBase } = delta;
+    expect(validate({ ...base, snapshots: [contentSnapshot, deltaWithoutBase] })).toBe(false);
+    expect(validate({ ...base, snapshots: [contentSnapshot, { ...delta, patch: [{ op: 'copy', path: '/domTree' }] }] })).toBe(false);
+    expect(validate({ ...base, snapshots: [contentSnapshot, { ...delta, patch: [{ op: 'replace', path: 'domTree' }] }] })).toBe(false);
+    expect(validate({ ...base, snapshots: [contentSnapshot, { ...delta, patch: [{ op: 'replace', path: '/domTree', value: 1, extra: true }] }] })).toBe(false);
+    expect(validate({ ...base, snapshots: [contentSnapshot, { ...delta, base: -1 }] })).toBe(false);
+  });
+
   it('rejects incomplete v2 recordings without limits, termination, and two snapshots', () => {
     const ajv = new Ajv();
     addFormats(ajv);

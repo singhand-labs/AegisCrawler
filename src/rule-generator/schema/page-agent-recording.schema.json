@@ -55,7 +55,27 @@
             "items": {
               "anyOf": [
                 { "required": ["phase", "sequence", "capture", "domTree"] },
-                { "required": ["phase", "sequence", "ref"] }
+                { "required": ["phase", "sequence", "ref"] },
+                {
+                  "required": ["phase", "sequence", "base", "patch"],
+                  "properties": {
+                    "base": { "type": "integer", "minimum": 0 },
+                    "patch": {
+                      "type": "array",
+                      "maxItems": 4096,
+                      "items": {
+                        "type": "object",
+                        "required": ["op", "path"],
+                        "properties": {
+                          "op": { "enum": ["add", "replace", "remove"] },
+                          "path": { "type": "string", "minLength": 1 },
+                          "value": {}
+                        },
+                        "additionalProperties": false
+                      }
+                    }
+                  }
+                }
               ]
             },
             "allOf": [
@@ -172,7 +192,22 @@
         "actionIndex": { "type": "integer", "minimum": 0 },
         "capture": { "$ref": "#/definitions/capture" },
         "domTree": { "$ref": "#/definitions/domNode" },
-        "ref": { "type": "integer", "minimum": 0 }
+        "ref": { "type": "integer", "minimum": 0 },
+        "base": { "type": "integer", "minimum": 0 },
+        "patch": {
+          "type": "array",
+          "maxItems": 4096,
+          "items": {
+            "type": "object",
+            "required": ["op", "path"],
+            "properties": {
+              "op": { "enum": ["add", "replace", "remove"] },
+              "path": { "type": "string", "minLength": 1 },
+              "value": {}
+            },
+            "additionalProperties": false
+          }
+        }
       }
     },
     "domNode": {

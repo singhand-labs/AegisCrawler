@@ -4,6 +4,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ContentRecorder } from '../../extension/src/content';
+import { applyPatch, contentOf } from '../../extension/src/recording/snapshot-delta';
 import type { PageAgentRecording } from '../../src/rule-generator/types';
 import {
   loadReusableBaiduRecording,
@@ -466,17 +467,33 @@ describe('encrypted reusable Books recordings', {
       bubbles: true,
       cancelable: true,
     }));
-    const produced = (await recorder.stopAsync()).snapshots
-      .find((snapshot) => snapshot.phase === 'before-action');
-    if (!produced?.domTree || !produced.capture) {
+    const recording = await recorder.stopAsync();
+    const produced = recording.snapshots.find((snapshot) => snapshot.phase === 'before-action');
+    // The before-action capture may be stored as a reference or a delta;
+    // resolve it against the initial full snapshot either way.
+    let domTree = produced?.domTree;
+    let capture = produced?.capture;
+    if (!domTree || !capture) {
+      const initial = recording.snapshots.find((snapshot) => snapshot.phase === 'initial');
+      if (produced?.ref !== undefined && initial) {
+        domTree = initial.domTree;
+        capture = initial.capture;
+      } else if (produced?.patch !== undefined && initial) {
+        const resolved = contentOf(initial);
+        applyPatch(resolved, produced.patch);
+        domTree = resolved.domTree as typeof domTree;
+        capture = resolved.capture as typeof capture;
+      }
+    }
+    if (!domTree || !capture) {
       throw new Error('ContentRecorder returned no navigation snapshot');
     }
-    const body = produced.domTree.children?.find((node) => node.tagName === 'body');
-    expect(produced.capture).toMatchObject({ redactionCount: 0, removedNodeCount: 2 });
+    const body = domTree.children?.find((node) => node.tagName === 'body');
+    expect(capture).toMatchObject({ redactionCount: 0, removedNodeCount: 2 });
     expect(body?.sanitization).toMatchObject({ contentOmitted: true });
     for (const snapshot of source.snapshots.slice(2)) {
-      snapshot.domTree = structuredClone(produced.domTree);
-      snapshot.capture = structuredClone(produced.capture);
+      snapshot.domTree = structuredClone(domTree);
+      snapshot.capture = structuredClone(capture);
       snapshot.capture.frames[0].url = snapshot.url;
     }
     saveReusableBooksRecording(paths, source);

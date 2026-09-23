@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ContentRecorder, RecorderOptions } from '../content';
 import type { PageAgentRecording, DomSnapshot, PageMark } from '../../../src/rule-generator/types';
+import { applyPatch, contentOf } from '../recording/snapshot-delta';
 
 type PageAgentRecordingType = PageAgentRecording;
 
@@ -1927,7 +1928,16 @@ describe('ContentRecorder', () => {
       expect(JSON.stringify(resolved?.domTree)).toContain('before click');
       expect(JSON.stringify(resolved?.domTree)).not.toContain('after click');
       expect(final?.ref).toBeUndefined();
-      expect(JSON.stringify(final?.domTree)).toContain('after click');
+      // The final page may be stored as a delta against the initial full
+      // snapshot; either form must resolve to the post-mutation DOM.
+      if (final?.domTree !== undefined) {
+        expect(JSON.stringify(final.domTree)).toContain('after click');
+      } else {
+        expect(final?.patch).toBeDefined();
+        const content = contentOf(initial!);
+        applyPatch(content, final!.patch!);
+        expect(JSON.stringify(content.domTree)).toContain('after click');
+      }
     });
 
     it('records the exact root frame audit on a synchronous navigation snapshot', async () => {
@@ -1944,7 +1954,16 @@ describe('ContentRecorder', () => {
       const recording = await recorder.stopAsync();
       const beforeAction = recording.snapshots.find((snapshot) => snapshot.phase === 'before-action');
 
-      expect(beforeAction?.capture?.frames).toEqual([{
+      // The before-action capture may live in a delta's resolved content
+      // (selector-index growth alone defeats the exact-match reference).
+      let frames = beforeAction?.capture?.frames;
+      if (frames === undefined && beforeAction?.patch !== undefined) {
+        const initial = recording.snapshots.find((snapshot) => snapshot.phase === 'initial');
+        const content = contentOf(initial!);
+        applyPatch(content, beforeAction.patch);
+        frames = (content.capture as { frames?: typeof frames } | null)?.frames;
+      }
+      expect(frames).toEqual([{
         frameId: 0,
         parentFrameId: -1,
         url: window.location.href,
@@ -2028,7 +2047,8 @@ describe('ContentRecorder', () => {
       expect(last.domTree).toBeUndefined();
 
       // A genuinely different element mapping (new indexed entry) is new
-      // selector evidence: stays a full snapshot.
+      // selector evidence: kept as a delta or full snapshot whose resolved
+      // content carries the new entry — never collapsed to a plain ref.
       const remapped = JSON.parse(JSON.stringify(initial));
       remapped.phase = 'before-action';
       remapped.sequence = 51;
@@ -2040,7 +2060,14 @@ describe('ContentRecorder', () => {
       internals.recording.snapshots.push(remapped);
       const lastAfter = internals.recording.snapshots[internals.recording.snapshots.length - 1];
       expect(lastAfter.ref).toBeUndefined();
-      expect(lastAfter.domTree).toBeDefined();
+      if (lastAfter.domTree === undefined) {
+        expect(lastAfter.patch).toBeDefined();
+        const resolved = contentOf(initial);
+        applyPatch(resolved, lastAfter.patch!);
+        expect(JSON.stringify(resolved.selectorMap)).toContain('a.brand-new');
+      } else {
+        expect(JSON.stringify(lastAfter.selectorMap)).toContain('a.brand-new');
+      }
 
       await recorder.stopAsync();
     });
@@ -2060,13 +2087,61 @@ describe('ContentRecorder', () => {
 
       // initial vs pre-action are identical (capture precedes the handler) —
       // the pre-action snapshot references it — but the mutated final page
-      // must stay a full snapshot or the mutation evidence is lost.
+      // must carry the mutation evidence: as a full snapshot or as a delta
+      // that resolves to it.
       const initial = recording.snapshots.find((snapshot) => snapshot.phase === 'initial');
       const beforeAction = recording.snapshots.find((snapshot) => snapshot.phase === 'before-action');
       const final = recording.snapshots.find((snapshot) => snapshot.phase === 'final');
       expect(beforeAction?.ref).toBe(initial?.sequence);
       expect(final?.ref).toBeUndefined();
-      expect(JSON.stringify(final?.domTree)).toContain('v2');
+      if (final?.domTree !== undefined) {
+        expect(JSON.stringify(final.domTree)).toContain('v2');
+      } else {
+        expect(final?.patch).toBeDefined();
+        const resolved = contentOf(initial!);
+        applyPatch(resolved, final!.patch!);
+        expect(JSON.stringify(resolved.domTree)).toContain('v2');
+      }
+    });
+
+    it('stores near-identical mutated snapshots as deltas anchored to the last full snapshot', async () => {
+      document.body.innerHTML = '<p id="state">v0</p><button id="mut">Mutate</button>';
+      let generation = 0;
+      document.getElementById('mut')!.addEventListener('click', () => {
+        generation += 1;
+        document.getElementById('state')!.textContent = `v${generation}`;
+      });
+      const recorder = new ContentRecorder({ protocolVersion: '2.0.0', maxEvents: 10 });
+      recorder.start();
+      await flushPromises();
+
+      for (let i = 0; i < 3; i += 1) {
+        document.getElementById('mut')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        await flushPromises();
+      }
+      const recording = await recorder.stopAsync();
+
+      const full = recording.snapshots.filter((s) => s.domTree !== undefined);
+      const deltas = recording.snapshots.filter((s) => s.patch !== undefined);
+      const refs = recording.snapshots.filter((s) => s.ref !== undefined);
+      // Only the initial snapshot stays full; the first pre-action capture is
+      // still v0 (identical -> reference), the mutated ones are small deltas
+      // against the initial snapshot (never chained to another delta).
+      expect(full.length).toBe(1);
+      expect(full[0].phase).toBe('initial');
+      expect(refs.length).toBe(1);
+      expect(deltas.length).toBe(recording.snapshots.length - full.length - refs.length);
+      expect(deltas.length).toBeGreaterThan(0);
+      for (const delta of deltas) {
+        expect(delta.base).toBe(full[0].sequence);
+        expect(delta.domTree).toBeUndefined();
+        expect(JSON.stringify(delta.patch!).length).toBeLessThan(1000);
+      }
+      // The newest delta resolves to the newest page state.
+      const newest = deltas[deltas.length - 1];
+      const resolved = contentOf(full[0]);
+      applyPatch(resolved, newest.patch!);
+      expect(JSON.stringify(resolved.domTree)).toContain(`v${generation}`);
     });
 
     it('seeds the dedup baseline from a restored recording containing references', async () => {

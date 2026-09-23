@@ -32,6 +32,7 @@ import { effectiveRole } from '../../src/rule-engine/aria-roles';
 import { PageMarkOverlay } from './marking/overlay';
 import type { PageMarkOverlayAdapter } from './marking/overlay';
 import { RecordingHud } from './recording/hud';
+import { buildSnapshotDelta, contentOf, type SnapshotContent } from './recording/snapshot-delta';
 
 export type { RecorderOptions };
 
@@ -250,6 +251,10 @@ export class ContentRecorder {
     domTree: string;
     capture: string;
   } | null = null;
+  /** Last stored FULL snapshot's content: the anchor every snapshot delta is
+   *  patched against (deltas never chain). Refreshed only when a snapshot is
+   *  stored in full — a delta never becomes the anchor. */
+  private deltaBase: { sequence: number; content: SnapshotContent } | null = null;
   // H-1: incremental byte-length tracking. Maintained per-push to avoid the
   // O(n²) cost of JSON.stringify(this.recording) on every event. Recalibrated
   // to the exact full-serialization value at checkpoint intervals.
@@ -1167,10 +1172,13 @@ export class ContentRecorder {
 
   /**
    * Returns a reference snapshot when the candidate's content equals the last
-   * content snapshot; otherwise remembers the candidate as the new content
-   * baseline and returns it unchanged. Snapshots without a domTree (capture
-   * failures) never participate: they are already small and carry no
-   * referenceable content.
+   * content snapshot; otherwise tries a bounded delta against the last stored
+   * full snapshot (near-identical pages — e.g. a carousel flipping `rendered`
+   * flags — collapse to a small RFC 6902 patch instead of another full
+   * payload); otherwise remembers the candidate as the new content baseline
+   * and returns it unchanged. Snapshots without a domTree (capture failures)
+   * never participate: they are already small and carry no referenceable
+   * content.
    */
   private deduplicateSnapshot(candidate: DomSnapshot): DomSnapshot {
     if (candidate.domTree === undefined) return candidate;
@@ -1186,7 +1194,30 @@ export class ContentRecorder {
       };
       return reference;
     }
+    const candidateContent = contentOf(candidate);
+    // Deltas never chain: they are always computed against the last stored
+    // FULL snapshot, so server-side expansion stays a single-step apply and
+    // rounding error cannot accumulate across a run of deltas.
+    const delta = this.deltaBase
+      ? buildSnapshotDelta(this.deltaBase, candidateContent)
+      : null;
     this.rememberContentSnapshot(candidate);
+    if (delta) {
+      return {
+        timestamp: candidate.timestamp,
+        url: candidate.url,
+        selectorMap: {},
+        phase: candidate.phase,
+        sequence: candidate.sequence,
+        actionIndex: candidate.actionIndex,
+        base: delta.base,
+        patch: delta.patch,
+      };
+    }
+    this.deltaBase = {
+      sequence: candidate.sequence ?? this.snapshotSequence - 1,
+      content: candidateContent,
+    };
     return candidate;
   }
 
@@ -1220,14 +1251,19 @@ export class ContentRecorder {
 
   /** Seed the dedup baseline from the newest full snapshot already stored in
    *  the recording (covers both a fresh start and resume from a checkpoint
-   *  that itself contains references). */
+   *  that itself contains references or deltas). */
   private restoreSnapshotDedupBaseline(recording: PageAgentRecording): void {
     this.lastContentSnapshot = null;
+    this.deltaBase = null;
     if (recording.version !== '2.0.0') return;
     for (let index = recording.snapshots.length - 1; index >= 0; index -= 1) {
       const snapshot = recording.snapshots[index];
       if (snapshot?.domTree !== undefined) {
         this.rememberContentSnapshot(snapshot);
+        this.deltaBase = {
+          sequence: snapshot.sequence ?? this.snapshotSequence - 1,
+          content: contentOf(snapshot),
+        };
         return;
       }
     }

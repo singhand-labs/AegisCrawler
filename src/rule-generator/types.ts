@@ -224,6 +224,25 @@ export interface DomSnapshot {
    * content; the server expands references at ingest.
    */
   ref?: number;
+  /**
+   * Snapshot deltas (v2): when a snapshot's content differs only slightly
+   * from the last stored full snapshot (e.g. a rotating carousel flipping
+   * `rendered` flags), the client stores an RFC 6902 subset patch against
+   * that full snapshot's `sequence` instead of another full payload.
+   * Deltas never chain — `base` always names a full snapshot — and the
+   * server applies the patch at ingest, so downstream consumers keep
+   * seeing full snapshots.
+   */
+  base?: number;
+  patch?: SnapshotPatchOp[];
+}
+
+/** RFC 6902 subset used for snapshot deltas: add / remove / replace with a
+ *  JSON pointer into the base snapshot's content object. */
+export interface SnapshotPatchOp {
+  op: 'add' | 'replace' | 'remove';
+  path: string;
+  value?: unknown;
 }
 
 export interface FrameCaptureReport {
