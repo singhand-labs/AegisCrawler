@@ -35,7 +35,12 @@ function isContainer(value: unknown): value is Record<string, unknown> | unknown
 
 /** Structural JSON diff producing an RFC 6902 subset (add / remove /
  *  replace). Arrays diff index-aligned: trailing removals go descending and
- *  additions ascending so a straightforward applier reproduces the target. */
+ *  additions ascending so a straightforward applier reproduces the target.
+ *  Property semantics follow JSON, not the TS in-memory shape: a key whose
+ *  value is `undefined` counts as absent (JSON.stringify drops it), so a
+ *  node dropping an optional field diffs to a remove — never to a
+ *  `value: undefined` replace, which would lose its value on the wire and
+ *  fail server-side validation. */
 export function diffJson(
   base: unknown,
   target: unknown,
@@ -45,7 +50,7 @@ export function diffJson(
   if (base === target) return;
   if (typeof base !== typeof target || !isContainer(base) || !isContainer(target)
     || Array.isArray(base) !== Array.isArray(target)) {
-    if (base !== target) ops.push({ op: 'replace', path: pointer, value: target });
+    if (base !== target) ops.push({ op: 'replace', path: pointer, value: jsonSafe(target) });
     return;
   }
   if (Array.isArray(base) && Array.isArray(target)) {
@@ -57,23 +62,35 @@ export function diffJson(
       ops.push({ op: 'remove', path: `${pointer}/${index}` });
     }
     for (let index = shared; index < target.length; index += 1) {
-      ops.push({ op: 'add', path: `${pointer}/${index}`, value: target[index] });
+      ops.push({ op: 'add', path: `${pointer}/${index}`, value: jsonSafe(target[index]) });
     }
     return;
   }
   const baseRecord = base as Record<string, unknown>;
   const targetRecord = target as Record<string, unknown>;
+  const present = (record: Record<string, unknown>, key: string): boolean =>
+    key in record && record[key] !== undefined;
   for (const key of Object.keys(baseRecord)) {
-    if (!(key in targetRecord)) ops.push({ op: 'remove', path: `${pointer}/${escapeToken(key)}` });
+    if (!present(targetRecord, key) && present(baseRecord, key)) {
+      ops.push({ op: 'remove', path: `${pointer}/${escapeToken(key)}` });
+    }
   }
   for (const key of Object.keys(targetRecord)) {
+    if (!present(targetRecord, key)) continue; // undefined === absent
     const token = escapeToken(key);
-    if (!(key in baseRecord)) {
+    if (!present(baseRecord, key)) {
       ops.push({ op: 'add', path: `${pointer}/${token}`, value: targetRecord[key] });
     } else {
       diffJson(baseRecord[key], targetRecord[key], `${pointer}/${token}`, ops);
     }
   }
+}
+
+/** JSON wire semantics for a leaf value: `undefined` cannot travel (object
+ *  context drops the key, array context becomes null), so replace it with
+ *  the null the serialized form would carry. */
+function jsonSafe(value: unknown): unknown {
+  return value === undefined ? null : value;
 }
 
 function parsePointer(pointer: string): string[] {
@@ -102,6 +119,9 @@ export function applyPatch(root: unknown, ops: SnapshotPatchOp[]): void {
   for (const op of ops) {
     if (op.op !== 'add' && op.op !== 'replace' && op.op !== 'remove') {
       throw new Error(`unsupported patch op ${String((op as { op?: unknown }).op)}`);
+    }
+    if ((op.op === 'add' || op.op === 'replace') && !('value' in op)) {
+      throw new Error(`patch op ${op.op} ${op.path} requires a value`);
     }
     const tokens = parsePointer(op.path);
     const last = tokens.pop();
@@ -158,8 +178,16 @@ export function buildSnapshotDelta(
   const ops: SnapshotPatchOp[] = [];
   diffJson(base.content, candidate, '', ops);
   if (ops.length === 0 || ops.length > MAX_DELTA_PATCH_OPS) return null;
-  const patchBytes = JSON.stringify(ops).length;
+  // Canonicalize to exactly the bytes the wire will carry: JSON.stringify
+  // drops `undefined` values, and an add/replace that lost its value this
+  // way would fail server-side validation. If any op is malformed after the
+  // round-trip, fall back to a full snapshot rather than emit it.
+  const patch = JSON.parse(JSON.stringify(ops)) as SnapshotPatchOp[];
+  if (patch.some((op) => (op.op === 'add' || op.op === 'replace') && op.value === undefined)) {
+    return null;
+  }
+  const patchBytes = JSON.stringify(patch).length;
   const contentBytes = JSON.stringify(candidate).length;
   if (patchBytes >= contentBytes * MAX_DELTA_SIZE_RATIO) return null;
-  return { base: base.sequence, patch: ops };
+  return { base: base.sequence, patch };
 }

@@ -115,5 +115,64 @@ describe('snapshot-delta', () => {
     expect(() => applyPatch(root, [{ op: 'add' as const, path: '/domTree/children/-', value: 1 }])).toThrow();
     expect(() => applyPatch(root, [{ op: 'add' as const, path: '/domTree/children/2', value: 1 }])).toThrow();
     expect(() => applyPatch(root, [{ op: 'copy' as unknown as 'add', path: '/domTree', value: 1 }])).toThrow(/unsupported/);
+    expect(() => applyPatch(root, [{ op: 'replace' as const, path: '/domTree/children/0/n' }])).toThrow(/requires a value/);
+  });
+
+  it('treats undefined-valued keys as absent so no op loses its value on the wire', () => {
+    // Regression shape from live baidu recordings: the serializer leaves
+    // optional sanitization fields explicitly undefined on some nodes, and
+    // JSON.stringify drops them — a `value: undefined` replace would arrive
+    // at the server as a valueless op and fail validation.
+    const base = {
+      domTree: {
+        type: 'element', tagName: 'section',
+        sanitization: { markupAltered: true, contentOmitted: true, alteredAttributes: ['class'] },
+      },
+      selectorMap: {},
+      capture: { nodeCount: 3 },
+    };
+    const target = {
+      domTree: {
+        type: 'element', tagName: 'section',
+        // Key present in the TS object but undefined — JSON-invisible.
+        sanitization: { markupAltered: true, contentOmitted: true, alteredAttributes: undefined },
+      },
+      selectorMap: {},
+      capture: { nodeCount: 3, extra: undefined },
+    };
+
+    const ops: SnapshotPatchOp[] = [];
+    diffJson(base, target, '', ops);
+    // The dropped attribute becomes a remove; the undefined-valued new key
+    // on capture never materializes.
+    expect(ops).toEqual([{ op: 'remove', path: '/domTree/sanitization/alteredAttributes' }]);
+
+    // The emitted patch survives its own JSON round-trip unchanged.
+    const wire = JSON.parse(JSON.stringify(ops)) as SnapshotPatchOp[];
+    expect(wire).toEqual(ops);
+    for (const op of wire) {
+      if (op.op !== 'remove') expect(op.value).not.toBeUndefined();
+    }
+
+    // Applying it to the base reproduces the target's JSON form exactly.
+    const patched = deepClone(base);
+    applyPatch(patched, wire);
+    expect(JSON.parse(JSON.stringify(patched))).toEqual(JSON.parse(JSON.stringify(target)));
+
+    // And buildSnapshotDelta never emits a patch that mutates on the wire.
+    const delta = buildSnapshotDelta({ sequence: 4, content: base }, target);
+    expect(delta).not.toBeNull();
+    expect(JSON.parse(JSON.stringify(delta!.patch))).toEqual(delta!.patch);
+  });
+
+  it('maps undefined array elements to the null the wire would carry', () => {
+    const base = { domTree: { children: [{ a: 1 }] } };
+    const target = { domTree: { children: [{ a: 1 }, { b: undefined }, undefined] } };
+    const ops: SnapshotPatchOp[] = [];
+    diffJson(base, target, '', ops);
+    const wire = JSON.parse(JSON.stringify(ops)) as SnapshotPatchOp[];
+    const patched = deepClone(base);
+    applyPatch(patched, wire);
+    expect(JSON.parse(JSON.stringify(patched))).toEqual(JSON.parse(JSON.stringify(target)));
   });
 });
