@@ -466,6 +466,41 @@ async function resolveRecordingOptions(payload: unknown): Promise<Record<string,
   }
 }
 
+/** Bodies above this size are gzipped on the wire (Content-Encoding: gzip,
+ *  understood by the server). Semantic recordings are multi-megabyte JSON
+ *  that compresses ~6x; below the threshold the CPU cost buys nothing. */
+const GZIP_UPLOAD_THRESHOLD_BYTES = 256 * 1024;
+
+function supportsGzipEncoding(): boolean {
+  return typeof CompressionStream === 'function';
+}
+
+/** Gzip the request body when worthwhile and supported. Returns the body plus
+ *  the Content-Encoding header to set; falls back to the identity payload
+ *  otherwise (the server accepts both). */
+async function encodeRequestBody(body: string): Promise<{ body: BodyInit; contentEncoding?: 'gzip' }> {
+  if (body.length < GZIP_UPLOAD_THRESHOLD_BYTES || !supportsGzipEncoding()) {
+    return { body };
+  }
+  try {
+    const bytes = new TextEncoder().encode(body);
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(bytes);
+        controller.close();
+      },
+      // DOM lib types CompressionStream as accepting BufferSource; the byte
+      // stream here only ever carries Uint8Array chunks.
+    }).pipeThrough(new CompressionStream('gzip') as unknown as ReadableWritablePair<Uint8Array, Uint8Array>);
+    const compressed = await new Response(stream).arrayBuffer();
+    // A pathological "compression" bigger than the original buys nothing.
+    if (compressed.byteLength >= body.length) return { body };
+    return { body: compressed, contentEncoding: 'gzip' };
+  } catch {
+    return { body };
+  }
+}
+
 async function persistRecordingV2(recording: PageAgentRecording): Promise<string | null> {
   if (recording.version !== '2.0.0') return null;
   if (!recording.termination?.complete) {
@@ -474,16 +509,19 @@ async function persistRecordingV2(recording: PageAgentRecording): Promise<string
   if (recording.meta.serverRecordingId) return recording.meta.serverRecordingId;
   if (!serverConfig.baseUrl) throw new Error('semantic recording requires a configured server');
   const traceId = generateTraceId();
+  const headers = buildAdminHeaders(traceId);
+  const { body, contentEncoding } = await encodeRequestBody(JSON.stringify({
+    recording,
+    startedAt: recording.meta.recordedAt,
+    endedAt: recording.meta.endedAt,
+  }));
+  if (contentEncoding) headers['Content-Encoding'] = contentEncoding;
   const response = await fetchWithTimeout(
     `${normalizeBaseUrl(serverConfig.baseUrl)}/api/v1/recordings`,
     {
       method: 'POST',
-      headers: buildAdminHeaders(traceId),
-      body: JSON.stringify({
-        recording,
-        startedAt: recording.meta.recordedAt,
-        endedAt: recording.meta.endedAt,
-      }),
+      headers,
+      body,
     },
     RECORDING_UPLOAD_TIMEOUT_MS,
   );

@@ -2004,6 +2004,47 @@ describe('ContentRecorder', () => {
       expect(totalBytes).toBeLessThan(bytes(initial) * 2.5);
     });
 
+    it('collapses snapshots that differ only by selectorMap bounding rects and keeps them full when the mapping changes', async () => {
+      document.body.innerHTML = '<button id="go">Go</button>';
+      const recorder = new ContentRecorder({ protocolVersion: '2.0.0', maxEvents: 10 });
+      recorder.start();
+      await flushPromises();
+      const internals = recorder as unknown as { recording: { snapshots: DomSnapshot[] } };
+      const initial = internals.recording.snapshots[0];
+
+      // Same url/domTree/capture, same index→selector mapping, only the
+      // viewport-relative rects moved (a scroll): must collapse to a ref.
+      const drifted = JSON.parse(JSON.stringify(initial));
+      drifted.phase = 'before-action';
+      drifted.sequence = 50;
+      drifted.actionIndex = 0;
+      drifted.timestamp = Date.now();
+      for (const entry of Object.values(drifted.selectorMap ?? {})) {
+        (entry as { boundingRect: { x: number; y: number; width: number; height: number } }).boundingRect = { x: 5, y: 700, width: 12, height: 8 };
+      }
+      internals.recording.snapshots.push(drifted);
+      const last = internals.recording.snapshots[internals.recording.snapshots.length - 1];
+      expect(last.ref).toBe(initial.sequence);
+      expect(last.domTree).toBeUndefined();
+
+      // A genuinely different element mapping (new indexed entry) is new
+      // selector evidence: stays a full snapshot.
+      const remapped = JSON.parse(JSON.stringify(initial));
+      remapped.phase = 'before-action';
+      remapped.sequence = 51;
+      remapped.actionIndex = 1;
+      remapped.selectorMap = {
+        ...(remapped.selectorMap ?? {}),
+        '99': { index: 99, tagName: 'a', selector: 'a.brand-new', boundingRect: { x: 0, y: 0, width: 3, height: 3 } },
+      };
+      internals.recording.snapshots.push(remapped);
+      const lastAfter = internals.recording.snapshots[internals.recording.snapshots.length - 1];
+      expect(lastAfter.ref).toBeUndefined();
+      expect(lastAfter.domTree).toBeDefined();
+
+      await recorder.stopAsync();
+    });
+
     it('keeps a full snapshot when the page content changes between actions', async () => {
       document.body.innerHTML = '<p id="state">v1</p><button id="mut">Mutate</button>';
       document.getElementById('mut')!.addEventListener('click', () => {

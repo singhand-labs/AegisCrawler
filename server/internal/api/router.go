@@ -135,8 +135,9 @@ func NewRouter(h *Handler, cfg *config.Config, logger *zap.Logger, metrics *Metr
 	mux.Handle("GET /swagger.yaml", swaggerAuth(http.FileServer(http.Dir("./docs"))))
 
 	// Middleware order (outermost first):
-	// admin UI SPA fallback -> global rate limit -> metrics -> circuit breaker -> per-worker/site rate limits -> logging -> recovery -> timeout -> body size -> mux
+	// admin UI SPA fallback -> global rate limit -> metrics -> circuit breaker -> per-worker/site rate limits -> logging -> recovery -> timeout -> body size -> gzip request decompression -> mux
 	var handler http.Handler = mux
+	handler = GzipRequestMiddleware(cfg.MaxRequestBodyBytes)(handler)
 	handler = MaxBodySizeMiddleware(cfg.MaxRequestBodyBytes)(handler)
 	handler = RequestTimeoutMiddleware(cfg.RequestTimeout, logger)(handler)
 	handler = RecoveryMiddleware(logger)(handler)

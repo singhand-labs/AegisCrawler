@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { gunzipSync } from 'node:zlib';
 import type { PageAgentRecording, PageMark, Rule } from '../../../src/rule-generator';
 
 function createChromeMock() {
@@ -994,6 +995,59 @@ describe('background service worker', () => {
       expect(body.recording.version).toBe('2.0.0');
       expect(body.startedAt).toBe(recording.meta.recordedAt);
       expect(body.endedAt).toBe(recording.meta.endedAt);
+    });
+
+    it('gzips large recording uploads on the wire and falls back for small ones', async () => {
+      const fetchMock = global.fetch as ReturnType<typeof vi.fn>;
+      await configureRecordingV2(fetchMock);
+      fetchMock.mockResolvedValue({
+        ok: true,
+        status: 201,
+        json: async () => ({ recording: { id: 'gz-recording' } }),
+      });
+
+      // The environment (like the real service worker) provides
+      // CompressionStream, so the wire bytes are genuinely compressed.
+      expect(typeof CompressionStream).toBe('function');
+
+      const bigRecording = makeV2Recording();
+      // Cross the gzip threshold with realistic snapshot payload.
+      bigRecording.snapshots[0].domTree = {
+        type: 'element',
+        tagName: 'html',
+        children: [{ type: 'text', text: 'x'.repeat(300 * 1024) }],
+      };
+      chromeMock.mock.tabs.sendMessage.mockImplementation(async (_tabId: number, message: unknown) => {
+        if ((message as { action?: string }).action === 'STOP_RECORDING') return { recording: bigRecording };
+        return { success: true };
+      });
+      await sendMessage({ action: 'START_RECORDING' });
+      const gz = (await sendMessage({ action: 'STOP_RECORDING' })) as { persistenceWarning?: string };
+      expect(gz.persistenceWarning).toBeUndefined();
+      const gzCall = fetchMock.mock.calls.find(([url]) => String(url).endsWith('/api/v1/recordings'));
+      expect(gzCall).toBeDefined();
+      const headers = gzCall![1].headers as Record<string, string>;
+      expect(headers['Content-Encoding']).toBe('gzip');
+      const wireBody = gzCall![1].body as ArrayBuffer;
+      expect(wireBody).toBeInstanceOf(ArrayBuffer);
+      const decompressed = JSON.parse(gunzipSync(Buffer.from(wireBody)).toString('utf8')) as {
+        recording: PageAgentRecording;
+      };
+      expect(decompressed.recording.version).toBe('2.0.0');
+      expect(wireBody.byteLength).toBeLessThan(JSON.stringify(bigRecording).length);
+
+      // Small payloads stay identity-encoded even with compression available.
+      fetchMock.mockClear();
+      chromeMock.mock.tabs.sendMessage.mockImplementation(async (_tabId: number, message: unknown) => {
+        if ((message as { action?: string }).action === 'STOP_RECORDING') return { recording: makeV2Recording() };
+        return { success: true };
+      });
+      await sendMessage({ action: 'START_RECORDING' });
+      const small = (await sendMessage({ action: 'STOP_RECORDING' })) as { persistenceWarning?: string };
+      expect(small.persistenceWarning).toBeUndefined();
+      const smallCall = fetchMock.mock.calls.find(([url]) => String(url).endsWith('/api/v1/recordings'));
+      expect((smallCall![1].headers as Record<string, string>)['Content-Encoding']).toBeUndefined();
+      expect(typeof smallCall![1].body).toBe('string');
     });
 
     it('reuses an existing server recording id without uploading again', async () => {

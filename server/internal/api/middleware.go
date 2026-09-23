@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -9,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"runtime/debug"
+	"strings"
 	"sync"
 	"time"
 
@@ -197,6 +199,58 @@ func MaxBodySizeMiddleware(limit int64) func(http.Handler) http.Handler {
 				ReadCloser: http.MaxBytesReader(srw, r.Body, limit),
 				w:          srw,
 			}
+			next.ServeHTTP(srw, r)
+		})
+	}
+}
+
+var errDecompressedBodyTooLarge = errors.New("decompressed request body exceeds the configured limit")
+
+// gzipBody decompresses a gzip request body while capping the decompressed
+// stream at max bytes, so a small compressed payload cannot expand into an
+// unbounded read (zip bomb). Exceeding the cap commits 413, mirroring
+// limitedBody.
+type gzipBody struct {
+	r        io.Reader
+	closer   io.Closer
+	w        *safeResponseWriter
+	max, n   int64
+	exceeded bool
+}
+
+func (b *gzipBody) Read(p []byte) (int, error) {
+	n, err := b.r.Read(p)
+	b.n += int64(n)
+	if b.n > b.max {
+		if !b.exceeded {
+			b.exceeded = true
+			b.w.WriteHeader(http.StatusRequestEntityTooLarge)
+		}
+		return n, errDecompressedBodyTooLarge
+	}
+	return n, err
+}
+
+func (b *gzipBody) Close() error { return b.closer.Close() }
+
+// GzipRequestMiddleware transparently decompresses request bodies sent with
+// Content-Encoding: gzip (the extension compresses large recording uploads).
+// Compose it inside MaxBodySizeMiddleware so the wire body and the
+// decompressed stream are each capped at limit bytes.
+func GzipRequestMiddleware(limit int64) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if limit <= 0 || !strings.EqualFold(r.Header.Get("Content-Encoding"), "gzip") || r.Body == nil || r.Body == http.NoBody {
+				next.ServeHTTP(w, r)
+				return
+			}
+			srw := &safeResponseWriter{ResponseWriter: w}
+			zr, err := gzip.NewReader(r.Body)
+			if err != nil {
+				http.Error(srw, "invalid gzip request body", http.StatusBadRequest)
+				return
+			}
+			r.Body = &gzipBody{r: zr, closer: zr, w: srw, max: limit}
 			next.ServeHTTP(srw, r)
 		})
 	}

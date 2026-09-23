@@ -1195,15 +1195,24 @@ export class ContentRecorder {
     if (!baseline) return false;
     return baseline.url === JSON.stringify(candidate.url)
       && baseline.capture === JSON.stringify(candidate.capture ?? null)
-      && baseline.selectorMap === JSON.stringify(candidate.selectorMap ?? {})
+      && baseline.selectorMap === ContentRecorder.canonicalSelectorMap(candidate.selectorMap)
       && baseline.domTree === JSON.stringify(candidate.domTree ?? null);
+  }
+
+  /** Canonical selectorMap form with viewport-relative geometry stripped:
+   *  bounding rects drift on every scroll even while the page is
+   *  semantically identical, so they must not defeat content deduplication.
+   *  The index↔selector mapping itself still participates — a page whose
+   *  element identities changed never collapses. */
+  private static canonicalSelectorMap(selectorMap: DomSnapshot['selectorMap']): string {
+    return JSON.stringify(selectorMap ?? {}, (key, value) => (key === 'boundingRect' ? undefined : value));
   }
 
   private rememberContentSnapshot(snapshot: DomSnapshot): void {
     this.lastContentSnapshot = {
       sequence: snapshot.sequence ?? this.snapshotSequence - 1,
       url: JSON.stringify(snapshot.url),
-      selectorMap: JSON.stringify(snapshot.selectorMap ?? {}),
+      selectorMap: ContentRecorder.canonicalSelectorMap(snapshot.selectorMap),
       domTree: JSON.stringify(snapshot.domTree ?? null),
       capture: JSON.stringify(snapshot.capture ?? null),
     };
