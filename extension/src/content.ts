@@ -1529,16 +1529,23 @@ export class ContentRecorder {
         }],
       };
     }
+    this.buildSnapshotSelectorMap(snapshot);
+    if (captured.domTree) {
+      snapshot.domTree = captured.domTree;
+    }
+    return snapshot;
+  }
+
+  /** Snapshot selectorMap construction shared by every capture path:
+   *  the interactable enumeration PLUS pinned event elements, so an element
+   *  any handler indexed always carries selector evidence. */
+  private buildSnapshotSelectorMap(snapshot: DomSnapshot): void {
     for (const el of this.findInteractableElements()) {
       const index = this.getElementIndex(el);
       const selector = this.inferSelector(el);
       snapshot.selectorMap[index] = this.buildDomElementInfo(el, index, selector);
     }
     this.drainPinnedEventElements(snapshot);
-    if (captured.domTree) {
-      snapshot.domTree = captured.domTree;
-    }
-    return snapshot;
   }
 
   private pinEventElement(el: Element): void {
@@ -2102,10 +2109,14 @@ export class ContentRecorder {
       };
     }
 
-    for (const el of this.findInteractableElements()) {
-      const index = this.getElementIndex(el);
-      const selector = this.inferSelector(el);
-      snapshot.selectorMap[index] = this.buildDomElementInfo(el, index, selector);
+    // Interactable enumeration + pinned event elements (both capture paths
+    // must drain the pins — the async path previously built its map without
+    // them, silently dropping evidence for every event it snapshotted).
+    this.inSnapshotCapture = true;
+    try {
+      this.buildSnapshotSelectorMap(snapshot);
+    } finally {
+      this.inSnapshotCapture = false;
     }
 
     const localTree = localCapture.domTree;

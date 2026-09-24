@@ -569,6 +569,8 @@ async function requirementRecording(): Promise<{ recording: PageAgentRecording; 
   if (recording.version !== '2.0.0') throw new Error('采集需求工作流需要语义录制 v2');
   const readinessError = await ensureRecordingReadyForGeneration(recording);
   if (readinessError) throw new Error(readinessError);
+  const expandError = expandRecordingForGeneration(recording);
+  if (expandError) throw new Error(expandError);
   const recordingId = recording.meta.serverRecordingId;
   if (!recordingId) throw new Error('录制尚未获得服务端 ID');
   return { recording, recordingId };
@@ -2547,6 +2549,8 @@ async function handleMessage(
         return { success: false, error: '未配置服务端地址' };
       }
       const payload = message.payload as { intent?: IntentCandidate; customDescription?: string } | undefined;
+      const expandError = expandRecordingForGeneration(recording);
+      if (expandError) return { success: false, error: expandError };
       const baseline = convert(recording, { ruleIdPrefix: 'ext' });
       const baseUrl = normalizeBaseUrl(serverConfig.baseUrl);
       const traceId = generateTraceId();
@@ -2631,6 +2635,8 @@ async function handleMessage(
       if (!serverConfig.baseUrl) {
         return { success: false, error: '未配置服务端地址' };
       }
+      const expandError = expandRecordingForGeneration(recording);
+      if (expandError) return { success: false, error: expandError };
       const baseline = convert(recording, { ruleIdPrefix: 'ext' });
       const preprocessed = preprocess(recording);
       const payload = message.payload as { userHint?: string } | undefined;

@@ -2113,6 +2113,34 @@ describe('ContentRecorder', () => {
       expect(rule.steps.some((step) => step.action === 'click')).toBe(true);
     });
 
+    it('drains pinned elements through the async capture path, not only the sync one', async () => {
+      // Regression: the async captureSnapshot built its selectorMap with its
+      // own enumeration loop and never drained the pin queue, silently
+      // dropping evidence for events snapshotted through it (scrolls, plain
+      // clicks, the final snapshot). Simulate an element indexed by an event
+      // handler and hidden before the async capture enumerates.
+      document.body.innerHTML = '<div id="scroller" style="overflow:auto"><div style="height:2000px"></div></div><button id="other" type="button">Go</button>';
+      const recorder = new ContentRecorder({ protocolVersion: '2.0.0', maxEvents: 10 });
+      recorder.start();
+      await flushPromises();
+
+      const scroller = document.getElementById('scroller')!;
+      const internals = recorder as unknown as { getElementIndex(el: Element): number };
+      const pinnedIndex = internals.getElementIndex(scroller); // queues the pin (event-path)
+      scroller.style.display = 'none'; // enumeration will now miss it
+
+      document.getElementById('other')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await flushPromises();
+      const recording = await recorder.stopAsync();
+
+      expandSnapshotReferences(recording);
+      const present = recording.snapshots.some((s) => Object.values(s.selectorMap ?? {}).some(
+        (entry) => typeof entry === 'object' && entry !== null && String((entry as { selector?: string }).selector).includes('scroller'),
+      ));
+      expect(present).toBe(true);
+      expect(recording.events.some((e) => (e as { index?: number }).index === pinnedIndex)).toBe(false); // pin only, no event
+    });
+
     it('keeps a full snapshot when the page content changes between actions', async () => {
       document.body.innerHTML = '<p id="state">v1</p><button id="mut">Mutate</button>';
       document.getElementById('mut')!.addEventListener('click', () => {

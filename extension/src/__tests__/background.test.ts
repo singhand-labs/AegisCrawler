@@ -2277,6 +2277,71 @@ describe('background service worker', () => {
       expect(chromeMock.sessionStorage.lastRuleYaml).toBeUndefined();
     });
 
+    it('CREATE_DSL_WORKFLOW expands compressed snapshots before building the baseline', async () => {
+      // Regression for the requirement-confirmed wizard step throwing
+      // "Element not found in recording snapshots": the baseline convert ran
+      // on the stored ref/delta form whose selectorMaps are empty.
+      const fetchMock = global.fetch as ReturnType<typeof vi.fn>;
+      await configureRecordingV2(fetchMock);
+      fetchMock.mockResolvedValue({
+        ok: true, status: 201,
+        json: async () => ({ recording: { id: 'compressed-workflow-recording' } }),
+      });
+
+      const recording = makeV2Recording();
+      recording.meta.serverRecordingId = undefined;
+      recording.events = [{ type: 'click', index: 2, timestamp: 10 }];
+      recording.snapshots.push({
+        timestamp: 10,
+        url: 'https://example.com/',
+        selectorMap: {},
+        phase: 'before-action',
+        sequence: 1,
+        actionIndex: 0,
+        base: 0,
+        patch: [
+          { op: 'add', path: '/selectorMap/2', value: { index: 2, tagName: 'button', selector: 'button.go', boundingRect: { x: 0, y: 0, width: 8, height: 8 } } },
+        ],
+      } as typeof recording.snapshots[number]);
+      chromeMock.mock.tabs.sendMessage.mockImplementation(async (_tabId: number, message: unknown) => {
+        if ((message as { action?: string }).action === 'STOP_RECORDING') return { recording };
+        return { success: true };
+      });
+      await sendMessage({ action: 'START_RECORDING' });
+      await sendMessage({ action: 'STOP_RECORDING' });
+
+      fetchMock.mockResolvedValueOnce({
+        ok: true, status: 202,
+        json: async () => ({
+          workflow: { id: 'wf-c', requirementId: 'req-1', status: 'awaiting_replay', browserProfileId: 'profile-1', repairCount: 0, maxRepairs: 3 },
+          job: { id: 'j1', workflowId: 'wf-c', kind: 'generate', status: 'done' },
+        }),
+      });
+      fetchMock.mockResolvedValueOnce({
+        ok: true, status: 200,
+        json: async () => ({
+          workflow: {
+            id: 'wf-c', requirementId: 'req-1', status: 'awaiting_replay', browserProfileId: 'profile-1',
+            repairCount: 0, maxRepairs: 3,
+            provisionalRule: { id: 'ext-1', version: '1.0.0', name: 'r', domain: 'example.com', entry: 'https://example.com/', steps: [] },
+            provisionalYaml: 'id: ext-1',
+          },
+        }),
+      });
+      const generated = (await sendMessage({
+        action: 'CREATE_DSL_WORKFLOW',
+        payload: { requirementId: 'req-1', browserProfileId: 'profile-1' },
+      })) as { success: boolean; error?: string };
+      expect(generated.error).toBeUndefined();
+      expect(generated.success).toBe(true);
+      // The submitted baseline was built from the EXPANDED recording: the
+      // clicked step is present with a resolved selector.
+      const submitted = fetchMock.mock.calls.find(([url]) => String(url).includes('/dsl-workflows'));
+      const body = JSON.parse((submitted![1] as { body: string }).body) as { baselineRule: { steps: Array<{ action: string; target: { $ref?: string } }> } };
+      const click = body.baselineRule.steps.find((step) => step.action === 'click');
+      expect(click).toBeDefined();
+    });
+
     it('validates durable dsl requests and reports incomplete server responses safely', async () => {
       await expect(sendMessage({ action: 'CREATE_DSL_WORKFLOW' })).resolves.toEqual({
         success: false, error: '缺少已确认需求或浏览器配置引用',
