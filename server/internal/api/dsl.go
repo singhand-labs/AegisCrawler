@@ -8,6 +8,7 @@ import (
 	"github.com/singhand-labs/AegisCrawler/internal/llm/dsl"
 	"github.com/singhand-labs/AegisCrawler/internal/llm/intent"
 	"github.com/singhand-labs/AegisCrawler/internal/models"
+	platformrecording "github.com/singhand-labs/AegisCrawler/internal/recording"
 	"go.uber.org/zap"
 )
 
@@ -54,6 +55,12 @@ func (h *Handler) GenerateFromIntent(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.BaselineRule == nil {
 		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "baselineRule is required")
+		return
+	}
+	// Expand reference/delta snapshots from the extension's compressed form
+	// before generation resolves element indexes.
+	if err := platformrecording.ExpandSnapshotReferences(req.Recording); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_RECORDING", err.Error())
 		return
 	}
 	if h.dslGenerator == nil {

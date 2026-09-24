@@ -10,6 +10,7 @@ import (
 	"github.com/singhand-labs/AegisCrawler/internal/llm"
 	"github.com/singhand-labs/AegisCrawler/internal/llm/prompt"
 	"github.com/singhand-labs/AegisCrawler/internal/models"
+	platformrecording "github.com/singhand-labs/AegisCrawler/internal/recording"
 	"github.com/singhand-labs/AegisCrawler/internal/rule"
 	"github.com/singhand-labs/AegisCrawler/internal/store"
 	"go.uber.org/zap"
@@ -48,6 +49,13 @@ func (h *Handler) EnhanceRule(w http.ResponseWriter, r *http.Request) {
 	ruleID, ok := baseline["id"].(string)
 	if !ok {
 		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "baselineRule.id must be a string")
+		return
+	}
+
+	// Expand reference/delta snapshots from the extension's compressed form
+	// before the enhancement job resolves element indexes.
+	if err := platformrecording.ExpandSnapshotReferences(recording); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_RECORDING", err.Error())
 		return
 	}
 

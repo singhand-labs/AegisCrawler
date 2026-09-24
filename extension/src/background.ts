@@ -1,4 +1,4 @@
-import { convert, convertToYaml, writeYaml, enhanceWithIntent } from '../../src/rule-generator';
+import { convert, convertToYaml, writeYaml, enhanceWithIntent, expandSnapshotReferences } from '../../src/rule-generator';
 import type { PageAgentRecording, PageMark, Rule, IntentCandidate } from '../../src/rule-generator';
 import { preprocess } from './recording/preprocessor';
 import { aggregateFrameDom } from './recording/frame-aggregator';
@@ -572,6 +572,20 @@ async function requirementRecording(): Promise<{ recording: PageAgentRecording; 
   const recordingId = recording.meta.serverRecordingId;
   if (!recordingId) throw new Error('录制尚未获得服务端 ID');
   return { recording, recordingId };
+}
+
+/** Rule generation runs client-side on the STORED recording, whose snapshots
+ *  may be compressed (identical → reference, near-identical → delta). Expand
+ *  them to full snapshots exactly like the server does at ingest so element
+ *  resolution (index → selector) keeps working. Mutates the freshly loaded
+ *  copy only — the stored form stays compressed. */
+function expandRecordingForGeneration(recording: PageAgentRecording): string | null {
+  try {
+    expandSnapshotReferences(recording);
+    return null;
+  } catch (error) {
+    return `录制快照引用无效：${error instanceof Error ? error.message : String(error)}`;
+  }
 }
 
 function marksOverrideForServer(recording: PageAgentRecording, capabilities: RecordingCapabilities | null): unknown[] | undefined {
@@ -2028,6 +2042,8 @@ async function handleMessage(
       }
       const readinessError = await ensureRecordingReadyForGeneration(recording);
       if (readinessError) return { success: false, error: readinessError };
+      const expandError = expandRecordingForGeneration(recording);
+      if (expandError) return { success: false, error: expandError };
       const yaml = convertToYaml(recording, { ruleIdPrefix: 'ext' });
       await chrome.storage.session.set({ lastRuleYaml: yaml });
       return { success: true, yaml };
@@ -2446,6 +2462,11 @@ async function handleMessage(
       }
       const readinessError = await ensureRecordingReadyForGeneration(recording);
       if (readinessError) return { success: false, error: readinessError };
+      // Expand refs/deltas before posting: the inline-recording endpoints
+      // accept the compressed form, but the predictor resolves element
+      // indexes against snapshot selector maps.
+      const expandError = expandRecordingForGeneration(recording);
+      if (expandError) return { success: false, error: expandError };
       // H-3: await cold-start config load before checking serverConfig.baseUrl.
       await ensureServerConfigLoaded();
       if (!serverConfig.baseUrl) {
@@ -2504,6 +2525,8 @@ async function handleMessage(
       if (!intent) {
         return { success: false, error: '未选择意图' };
       }
+      const expandError = expandRecordingForGeneration(recording);
+      if (expandError) return { success: false, error: expandError };
       const baseline = convert(recording, { ruleIdPrefix: 'ext' });
       const enhanced = enhanceWithIntent(baseline, intent);
       const yaml = writeYaml(enhanced);

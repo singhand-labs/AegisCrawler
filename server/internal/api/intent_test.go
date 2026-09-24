@@ -111,6 +111,53 @@ func TestPredictIntentHandler_InvalidJSON(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
+// Inline recordings arrive in the extension's compressed form (refs/deltas);
+// the handler must expand them and fail closed on malformed pointers.
+func TestPredictIntentHandler_ExpandsCompressedRecording(t *testing.T) {
+	pred := newTestPredictor(t, `{"candidates": []}`)
+	h := NewHandler(nil, nil, nil, pred, &config.Config{}, zap.NewNop())
+
+	compressed := func() map[string]any {
+		return map[string]any{
+			"meta": map[string]any{"startUrl": "https://example.com", "title": "Example"},
+			"snapshots": []any{
+				map[string]any{
+					"timestamp": 1, "url": "https://example.com/", "phase": "initial", "sequence": 0,
+					"selectorMap": map[string]any{}, "domTree": map[string]any{"type": "element", "tagName": "html"},
+					"capture": map[string]any{"status": "complete", "frames": []any{}},
+				},
+				map[string]any{
+					"timestamp": 2, "url": "https://example.com/", "phase": "before-action", "sequence": 1,
+					"selectorMap": map[string]any{}, "base": 0,
+					"patch": []any{map[string]any{"op": "replace", "path": "/domTree/tagName", "value": "main"}},
+				},
+			},
+		}
+	}
+
+	t.Run("valid refs and deltas are expanded before prediction", func(t *testing.T) {
+		body, _ := json.Marshal(PredictIntentRequest{Recording: compressed()})
+		req := httptest.NewRequest(http.MethodPost, "/admin/rules/predict-intent", bytes.NewReader(body))
+		w := httptest.NewRecorder()
+		h.PredictIntent(w, req)
+		assert.Equal(t, http.StatusOK, w.Code)
+	})
+
+	t.Run("malformed snapshot pointers fail closed with 400", func(t *testing.T) {
+		payload := compressed()
+		snapshots := payload["snapshots"].([]any)
+		snapshots[1].(map[string]any)["base"] = float64(99) // unknown base
+		body, _ := json.Marshal(PredictIntentRequest{Recording: payload})
+		req := httptest.NewRequest(http.MethodPost, "/admin/rules/predict-intent", bytes.NewReader(body))
+		w := httptest.NewRecorder()
+		h.PredictIntent(w, req)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		var resp ErrorResponse
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+		assert.Equal(t, "INVALID_RECORDING", resp.Code)
+	})
+}
+
 func TestPredictIntentHandler_LLMFallback(t *testing.T) {
 	cfg := &config.Config{LLMEnabled: false}
 	pred := intent.NewPredictor(cfg, nil, zap.NewNop())

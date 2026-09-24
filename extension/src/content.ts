@@ -259,6 +259,15 @@ export class ContentRecorder {
   // O(n²) cost of JSON.stringify(this.recording) on every event. Recalibrated
   // to the exact full-serialization value at checkpoint intervals.
   private currentByteLength = 0;
+  /** Elements indexed by event handlers that the snapshot's interactable
+   *  enumeration may not cover (scroll containers, zero-size or handler-only
+   *  elements). The next capture drains them into its selectorMap so the
+   *  event's index always has selector evidence — the converter resolves
+   *  events against exactly that map and fails closed without it. */
+  private pendingEventElements: Element[] = [];
+  /** True while captureLocalSnapshot enumerates: its own getElementIndex
+   *  calls must not re-pin the elements it is about to write anyway. */
+  private inSnapshotCapture = false;
   // D-3: throttle checkpoint sends so we don't spam the SW on every event.
   // Forced flush on beforeunload / explicit stop bypasses the throttle.
   private static readonly CHECKPOINT_MIN_INTERVAL_MS = 5000;
@@ -496,6 +505,7 @@ export class ContentRecorder {
     this.recording = null;
     this.eventCount = 0;
     this.snapshotCount = 0;
+    this.pendingEventElements = [];
     this.lastRecording = result;
     this.stopping = false;
     this.clearPersistedState();
@@ -1479,6 +1489,19 @@ export class ContentRecorder {
     phase?: 'initial' | 'before-action' | 'final',
     actionIndex?: number,
   ): DomSnapshot {
+    this.inSnapshotCapture = true;
+    try {
+      return this.captureLocalSnapshotInner(timestamp, phase, actionIndex);
+    } finally {
+      this.inSnapshotCapture = false;
+    }
+  }
+
+  private captureLocalSnapshotInner(
+    timestamp: number,
+    phase?: 'initial' | 'before-action' | 'final',
+    actionIndex?: number,
+  ): DomSnapshot {
     const captured = captureLocalDomWithReport(this.getDomAggregateOptions());
     const snapshot: DomSnapshot = {
       timestamp,
@@ -1511,10 +1534,36 @@ export class ContentRecorder {
       const selector = this.inferSelector(el);
       snapshot.selectorMap[index] = this.buildDomElementInfo(el, index, selector);
     }
+    this.drainPinnedEventElements(snapshot);
     if (captured.domTree) {
       snapshot.domTree = captured.domTree;
     }
     return snapshot;
+  }
+
+  private pinEventElement(el: Element): void {
+    this.pendingEventElements.push(el);
+    // Bound the queue between captures; detached elements resolve to
+    // zero-rect entries, so old pins are safe to drop.
+    if (this.pendingEventElements.length > 128) {
+      this.pendingEventElements = this.pendingEventElements.slice(-128);
+    }
+  }
+
+  /** Fold event-referenced elements that the interactable enumeration
+   *  missed into the snapshot's selectorMap. This runs BEFORE the snapshot
+   *  is pushed, so the dedup/delta pipeline stores the enriched map and the
+   *  entry survives reference/delta expansion on every consumer. */
+  private drainPinnedEventElements(snapshot: DomSnapshot): void {
+    if (this.pendingEventElements.length === 0) return;
+    const pinned = this.pendingEventElements;
+    this.pendingEventElements = [];
+    for (const el of pinned) {
+      const index = this.getElementIndex(el);
+      if (snapshot.selectorMap[index] === undefined) {
+        snapshot.selectorMap[index] = this.buildDomElementInfo(el, index, this.inferSelector(el));
+      }
+    }
   }
 
   private attachDomListeners(): void {
@@ -2216,6 +2265,10 @@ export class ContentRecorder {
   }
 
   private getElementIndex(el: Element): number {
+    // Index requests outside the snapshot's own interactable enumeration
+    // (i.e. event handlers) pin the element for the next capture so its
+    // selector entry cannot go missing from every snapshot.
+    if (this.recordingFlag && !this.inSnapshotCapture) this.pinEventElement(el);
     const selector = this.inferSelector(el);
     const identity = this.elementIdentityKey(el, selector);
     const existing = this.selectorToIndex.get(identity);

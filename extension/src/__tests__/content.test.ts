@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ContentRecorder, RecorderOptions } from '../content';
 import type { PageAgentRecording, DomSnapshot, PageMark } from '../../../src/rule-generator/types';
 import { applyPatch, contentOf } from '../recording/snapshot-delta';
+import { expandSnapshotReferences } from '../../../src/rule-generator';
+import { convert as convertRecording } from '../../../src/rule-generator/converter/PageAgentToDslConverter';
 
 type PageAgentRecordingType = PageAgentRecording;
 
@@ -2070,6 +2072,45 @@ describe('ContentRecorder', () => {
       }
 
       await recorder.stopAsync();
+    });
+
+    it('pins event elements the interactable enumeration misses into their snapshots', async () => {
+      // Regression for "Element not found in recording snapshots": the
+      // before-action capture resolves asynchronously, AFTER page handlers
+      // run — a click that hides or removes its own element (menus, chips,
+      // closers) is interactable at click time but invisible at capture
+      // time, so its selector entry went missing from every snapshot and
+      // downstream resolution failed closed.
+      document.body.innerHTML = '<button id="custom" type="button">Do it</button>';
+      const clicked: string[] = [];
+      document.getElementById('custom')!.addEventListener('click', function hide() {
+        clicked.push('yes');
+        (this as unknown as HTMLElement).style.display = 'none';
+      });
+      const recorder = new ContentRecorder({ protocolVersion: '2.0.0', maxEvents: 10 });
+      recorder.start();
+      await flushPromises();
+
+      document.getElementById('custom')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await flushPromises();
+      const recording = await recorder.stopAsync();
+
+      expect(clicked).toEqual(['yes']);
+      expect(recording.events).toHaveLength(1);
+      const event = recording.events[0] as { type: string; index?: number };
+      expect(event.type).toBe('click');
+      expect(event.index).toBeDefined();
+
+      // The true consumer contract: expand the compressed form and convert —
+      // this exact flow threw "Element not found in recording snapshots"
+      // before the pin.
+      expandSnapshotReferences(recording);
+      const withEntry = recording.snapshots.filter(
+        (s) => (s.selectorMap as unknown as Record<string, unknown> | undefined)?.[String(event.index)] !== undefined,
+      );
+      expect(withEntry.length).toBeGreaterThan(0);
+      const rule = convertRecording(recording, { ruleIdPrefix: 'ext' });
+      expect(rule.steps.some((step) => step.action === 'click')).toBe(true);
     });
 
     it('keeps a full snapshot when the page content changes between actions', async () => {

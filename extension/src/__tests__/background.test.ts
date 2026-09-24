@@ -1448,6 +1448,59 @@ describe('background service worker', () => {
       expect(chromeMock.sessionStorage.lastRuleYaml).toBe(response.yaml);
     });
 
+    it('GENERATE_RULE expands stored reference/delta snapshots before converting', async () => {
+      // Regression for "Element not found in recording snapshots": the
+      // stored recording's only full selectorMap lacks the clicked element —
+      // its entry lives in a delta patch, so conversion must expand first.
+      const recording = makeV2Recording();
+      recording.events = [{ type: 'click', index: 2, timestamp: 10 }];
+      recording.snapshots[0].timestamp = 0;
+      recording.snapshots.push({
+        timestamp: 10,
+        url: 'https://example.com/',
+        selectorMap: {},
+        phase: 'before-action',
+        sequence: 1,
+        actionIndex: 0,
+        base: 0,
+        patch: [
+          { op: 'add', path: '/selectorMap/2', value: { index: 2, tagName: 'button', selector: 'button.go', boundingRect: { x: 0, y: 0, width: 8, height: 8 } } },
+        ],
+      } as typeof recording.snapshots[number]);
+      chromeMock.mock.tabs.sendMessage.mockImplementation(async (_tabId: number, message: unknown) => {
+        if ((message as { action?: string }).action === 'STOP_RECORDING') return { recording };
+        return { success: true };
+      });
+      const pristine = JSON.parse(JSON.stringify(recording)) as typeof recording;
+      const fetchMock = global.fetch as ReturnType<typeof vi.fn>;
+      await configureRecordingV2(fetchMock);
+      fetchMock.mockResolvedValue({
+        ok: true,
+        status: 201,
+        json: async () => ({ recording: { id: 'compressed-recording' } }),
+      });
+      await sendMessage({ action: 'START_RECORDING' });
+      await sendMessage({ action: 'STOP_RECORDING' });
+      const response = (await sendMessage({ action: 'GENERATE_RULE' })) as { success: boolean; yaml?: string; error?: string };
+      expect(response.error).toBeUndefined();
+      expect(response.success).toBe(true);
+      expect(response.yaml).toContain('click');
+
+      // Fail-closed: a malformed pointer surfaces as a readable error
+      // instead of an opaque converter crash.
+      const broken = JSON.parse(JSON.stringify(pristine)) as typeof pristine;
+      (broken.snapshots.find((s) => s.patch !== undefined) as { base?: number }).base = 99;
+      chromeMock.mock.tabs.sendMessage.mockImplementation(async (_tabId: number, message: unknown) => {
+        if ((message as { action?: string }).action === 'STOP_RECORDING') return { recording: broken };
+        return { success: true };
+      });
+      await sendMessage({ action: 'START_RECORDING' });
+      await sendMessage({ action: 'STOP_RECORDING' });
+      const invalid = (await sendMessage({ action: 'GENERATE_RULE' })) as { success: boolean; error?: string };
+      expect(invalid.success).toBe(false);
+      expect(invalid.error).toContain('录制快照引用无效');
+    });
+
     it('GENERATE_RULE fails without a recording', async () => {
       const response = (await sendMessage({ action: 'GENERATE_RULE' })) as { success: boolean; error: string };
       expect(response.success).toBe(false);

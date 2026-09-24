@@ -7,6 +7,7 @@ import (
 
 	"github.com/singhand-labs/AegisCrawler/internal/llm/budget"
 	"github.com/singhand-labs/AegisCrawler/internal/llm/intent"
+	platformrecording "github.com/singhand-labs/AegisCrawler/internal/recording"
 	"go.uber.org/zap"
 )
 
@@ -37,6 +38,13 @@ func (h *Handler) PredictIntent(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Recording == nil {
 		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "recording is required")
+		return
+	}
+	// Inline recordings arrive in the extension's compressed form (identical
+	// snapshots as references, near-identical as deltas). Expand before the
+	// predictor resolves element indexes against snapshot selector maps.
+	if err := platformrecording.ExpandSnapshotReferences(req.Recording); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_RECORDING", err.Error())
 		return
 	}
 
