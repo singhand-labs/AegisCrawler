@@ -1,6 +1,8 @@
 /// <reference types="vitest/globals" />
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createEnvironment, loadTaskFromHash, isTrustedServerUrl, getTrustedServerOrigins, getWorkerApiKey } from './environment';
+import { utf8ToBase64 } from './utils';
+import { encodeDescriptor } from './dispatcher-entry';
 import type { Transport } from './types';
 
 const mockTransport: Transport = {
@@ -13,7 +15,10 @@ const mockTransport: Transport = {
 };
 
 function setHash(payload: Record<string, unknown>): void {
-  const encoded = btoa(JSON.stringify(payload));
+  // Mirror the dispatcher's exact wire format: UTF-8-safe base64 then
+  // encodeURIComponent. Raw btoa hides the percent-escape truncation bug
+  // this helper once missed.
+  const encoded = encodeURIComponent(utf8ToBase64(JSON.stringify(payload)));
   (window.location as any).hash = `#scrape=${encoded}`;
 }
 
@@ -146,6 +151,45 @@ describe('loadTaskFromHash', () => {
     (globalThis as any).__TRUSTED_SERVER_ORIGINS__ = ['https://api.example.com'];
     (window.location as any).hash = '#scrape=!!!invalid-base64!!!';
     expect(loadTaskFromHash()).toBeNull();
+  });
+
+  it('parses the dispatcher wire format with percent escapes and Unicode variables', () => {
+    // Live incident: the dispatcher percent-encodes the base64 descriptor
+    // (+, /, = become %2B, %2F, %3D), and the hash regex once lacked '%',
+    // truncating the capture at the first escape so atob always failed.
+    (globalThis as any).__TRUSTED_SERVER_ORIGINS__ = ['http://127.0.0.1:8080'];
+    const descriptor = encodeDescriptor({
+      taskId: 'bb660fbe-b392-4cb2-b026-bd6c5c6aa287',
+      ruleId: 'ext-1791787465705',
+      variables: {},
+    } as Parameters<typeof encodeDescriptor>[0], {
+      serverUrl: 'http://127.0.0.1:8080',
+      workerId: 'scriptcat-1',
+      pollIntervalMs: 5000,
+    });
+    if (!descriptor.includes('%')) {
+      throw new Error('test descriptor must contain percent escapes; adjust the fixture');
+    }
+    (window.location as any).hash = `#scrape=${descriptor}`;
+    const result = loadTaskFromHash();
+    expect(result).toMatchObject({
+      taskId: 'bb660fbe-b392-4cb2-b026-bd6c5c6aa287',
+      ruleId: 'ext-1791787465705',
+      serverUrl: 'http://127.0.0.1:8080',
+      workerId: 'scriptcat-1',
+    });
+  });
+
+  it('parses Unicode variables through the percent-encoded wire format', () => {
+    (globalThis as any).__TRUSTED_SERVER_ORIGINS__ = ['http://127.0.0.1:8080'];
+    setHash({
+      taskId: 't-unicode',
+      ruleId: 'r1',
+      serverUrl: 'http://127.0.0.1:8080',
+      workerId: 'w1',
+      variables: { search_query: '大模型技术趋势' },
+    });
+    expect(loadTaskFromHash()?.variables).toEqual({ search_query: '大模型技术趋势' });
   });
 
   it('passes a well-formed attemptId through', () => {

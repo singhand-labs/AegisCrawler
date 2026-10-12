@@ -108,7 +108,10 @@ export interface TaskDescriptorFromHash {
 
 export function loadTaskFromHash(): TaskDescriptorFromHash | null {
   const hash = location.hash;
-  const match = hash.match(/#scrape=([A-Za-z0-9+/=_-]+)/);
+  // The dispatcher percent-encodes the base64 descriptor (encodeURIComponent
+  // turns +, /, and = into %2B, %2F, %3D), so the capture charset must
+  // include '%' or the match truncates at the first escape and atob fails.
+  const match = hash.match(/#scrape=([A-Za-z0-9+/=%_-]+)/);
   if (!match) return null;
   try {
     // UTF-8-safe base64 decode: plain-ASCII descriptors (legacy btoa)
