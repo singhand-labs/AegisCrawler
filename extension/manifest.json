@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "AegisCrawler 页面录制器",
-  "version": "0.1.0",
-  "description": "录制浏览器交互并生成 AegisCrawler YAML 规则。",
+  "name": "AegisCrawler \u9875\u9762\u5f55\u5236\u5668",
+  "version": "0.2.1",
+  "description": "\u5f55\u5236\u6d4f\u89c8\u5668\u4ea4\u4e92\u5e76\u751f\u6210 AegisCrawler YAML \u89c4\u5219\u3002",
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
@@ -13,8 +13,12 @@
   },
   "content_scripts": [
     {
-      "matches": ["*://*/*"],
-      "js": ["content.js"],
+      "matches": [
+        "*://*/*"
+      ],
+      "js": [
+        "content.js"
+      ],
       "run_at": "document_idle",
       "all_frames": true,
       "match_about_blank": true
@@ -28,6 +32,16 @@
       "128": "icons/icon128.png"
     }
   },
-  "permissions": ["activeTab", "storage", "unlimitedStorage", "scripting", "webNavigation", "alarms", "downloads"],
-  "host_permissions": ["*://*/*"]
+  "permissions": [
+    "activeTab",
+    "storage",
+    "unlimitedStorage",
+    "scripting",
+    "webNavigation",
+    "alarms",
+    "downloads"
+  ],
+  "host_permissions": [
+    "*://*/*"
+  ]
 }

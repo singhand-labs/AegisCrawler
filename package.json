@@ -1,6 +1,6 @@
 {
   "name": "aegiscrawler-rule-engine",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "AegisCrawler rule engine for human-like web automation",
   "license": "GPL-3.0-or-later",
   "author": "Singhand Labs <zy@singhand.com>",
@@ -44,7 +44,7 @@
     "test:external:contract": "node --test scripts/external-production-qualification.contract.js",
     "test:e2e:live-llm-local": "ts-node scripts/local-live-llm-canary.ts",
     "test:e2e:external": "node scripts/external-production-qualification.js",
-    "test:e2e:manual": "echo 'Manual-only E2E scripts (not wired to CI; 7 total post-D-1 — see docs/superpowers/specs/2026-08-03-recording-replay-robustness-design.md §2.1 Step 2(c) and S-2): replay-mv3-stability:qualification, live-workflow, mainstream-readonly, baidu-replay, books-generation, live-llm-local, external.'"
+    "test:e2e:manual": "echo 'Manual-only E2E scripts (not wired to CI; 7 total post-D-1 \u2014 see docs/superpowers/specs/2026-08-03-recording-replay-robustness-design.md \u00a72.1 Step 2(c) and S-2): replay-mv3-stability:qualification, live-workflow, mainstream-readonly, baidu-replay, books-generation, live-llm-local, external.'"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",
