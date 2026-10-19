@@ -1,5 +1,11 @@
 # AegisCrawler PageResearch Agent Service
 
+<p align="center">
+  <img src="assets/logo-zh.jpg" alt="AegisCrawler 中文商标" width="160" />
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <img src="assets/logo-en.jpg" alt="AegisCrawler 英文图标" width="160" />
+</p>
+
 [![CI](https://github.com/singhand-labs/AegisCrawler/actions/workflows/ci.yml/badge.svg)](https://github.com/singhand-labs/AegisCrawler/actions/workflows/ci.yml)
 [![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg)](LICENSE)
 [![Docker](https://img.shields.io/badge/docker-ghcr.io-2496ED?logo=docker&logoColor=white)](https://github.com/singhand-labs/AegisCrawler/pkgs/container/aegiscrawler)
