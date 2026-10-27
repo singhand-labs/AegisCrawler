@@ -1677,14 +1677,32 @@ async function activateRecordingTab(tabId: number): Promise<void> {
 }
 
 chrome.tabs.onCreated.addListener((tab) => {
-  if (tab.id == null || tab.openerTabId == null) return;
+  if (tab.id == null) return;
   serializeStateMutation(async () => {
     const session = await loadActiveRecording();
     if (!session) return;
     const participantIds = Array.isArray(session.tabIds) && session.tabIds.length > 0
       ? session.tabIds
       : [session.tabId];
-    if (!participantIds.includes(tab.openerTabId!) || participantIds.includes(tab.id!)) return;
+    if (participantIds.includes(tab.id!)) return;
+
+    let openerTabId = tab.openerTabId;
+    if (openerTabId == null) {
+      // Some sites open links with noopener, so Chrome omits openerTabId.
+      // Associate that new page only while the recording owner is still the
+      // active tab; do not absorb tabs opened from elsewhere in the window.
+      const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true }).catch(() => []);
+      if (activeTab?.id === session.tabId) openerTabId = activeTab.id;
+    }
+    if (openerTabId == null || !participantIds.includes(openerTabId)) return;
+    const targetUrl = tab.url ?? tab.pendingUrl;
+    if (!targetUrl) return;
+    try {
+      const url = new URL(targetUrl);
+      if (url.protocol !== 'http:' && url.protocol !== 'https:') return;
+    } catch {
+      return;
+    }
     await saveActiveRecording({ ...session, tabIds: [...participantIds, tab.id!] });
   });
 });

@@ -810,6 +810,34 @@ describe('background service worker', () => {
       );
     });
 
+    it('associates a noopener tab with the active recording owner', async () => {
+      await sendMessage({ action: 'START_RECORDING' });
+      chromeMock.mock.tabs.query.mockResolvedValueOnce([{ id: 42, url: 'https://example.com/' }]);
+
+      chromeMock.onCreatedListeners.forEach((listener) => listener({
+        id: 99, url: 'https://example.com/detail', status: 'complete',
+      }));
+      await flushAsync();
+
+      expect(chromeMock.sessionStorage.oc_recording_session).toMatchObject({
+        tabId: 42, tabIds: [42, 99],
+      });
+    });
+
+    it('does not associate a noopener tab when the recording owner is no longer active', async () => {
+      await sendMessage({ action: 'START_RECORDING' });
+      chromeMock.mock.tabs.query.mockResolvedValueOnce([{ id: 77, url: 'https://other.example/' }]);
+
+      chromeMock.onCreatedListeners.forEach((listener) => listener({
+        id: 99, url: 'https://example.com/detail', status: 'complete',
+      }));
+      await flushAsync();
+
+      expect(chromeMock.sessionStorage.oc_recording_session).toMatchObject({
+        tabId: 42, tabIds: [42],
+      });
+    });
+
     it('does not move recording to an unrelated active tab', async () => {
       await sendMessage({ action: 'START_RECORDING' });
       chromeMock.mock.tabs.sendMessage.mockClear();
