@@ -112,6 +112,8 @@ interface DSLReplayResponse {
 
 interface ActiveRecordingSession {
   tabId: number;
+  /** Browser tabs explicitly joined to this recording, including its current owner. */
+  tabIds?: number[];
   startedAt: number;
   options: Record<string, unknown>;
   selectorToIndex?: Array<[string, { index: number; lastUsedAt: number }]>;
@@ -1601,12 +1603,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 // completion before the next state-mutating handler starts, eliminating
 // read-modify-write races on activeRecording / activeReplay / serverConfig.
 let stateMutationChain: Promise<void> = Promise.resolve();
-function serializeStateMutation(work: () => Promise<void>): void {
+function serializeStateMutation<T = void>(work: () => Promise<T>): Promise<T> {
   // Swallow prior rejection so a failing handler does not permanently break
   // the queue; then chain the new work.
-  stateMutationChain = stateMutationChain
+  const result = stateMutationChain
     .catch(() => undefined)
     .then(work);
+  stateMutationChain = result.then(() => undefined, () => undefined);
+  return result;
 }
 
 // Actions whose handlers read and mutate shared in-memory state
@@ -1633,6 +1637,61 @@ const STATE_MUTATING_ACTIONS = new Set([
   'GENERATE_DSL_FROM_INTENT',
   'DOWNLOAD_RULE',
 ]);
+
+/** Transfer recorder state only among tabs joined to the active workflow. */
+async function activateRecordingTab(tabId: number): Promise<void> {
+  const isParticipant = await serializeStateMutation(async () => {
+    const session = await loadActiveRecording();
+    const participantIds = session && Array.isArray(session.tabIds) && session.tabIds.length > 0
+      ? session.tabIds
+      : session ? [session.tabId] : [];
+    return Boolean(session && session.tabId !== tabId && participantIds.includes(tabId));
+  });
+  if (!isParticipant) return;
+
+  let target: ChromeTab;
+  try {
+    target = await chrome.tabs.get(tabId);
+    if (target.status !== 'complete') {
+      await waitForTabLoad(tabId, TAB_LOAD_TIMEOUT_MS);
+      target = await chrome.tabs.get(tabId);
+    }
+  } catch (error) {
+    console.warn('[background] recording tab handoff target did not finish loading:', error);
+    return;
+  }
+
+  // Do not hold the serialized state queue while waiting for page load: stop,
+  // checkpoint and service-worker lifecycle messages must remain responsive.
+  await serializeStateMutation(async () => {
+    const session = await loadActiveRecording();
+    const participantIds = session && Array.isArray(session.tabIds) && session.tabIds.length > 0
+      ? session.tabIds
+      : session ? [session.tabId] : [];
+    if (!session || session.tabId === tabId || !participantIds.includes(tabId)) return;
+    const transferred = await transferActiveRecording(session, target);
+    if (!transferred.success) {
+      console.warn('[background] recording tab handoff was not completed:', transferred.error);
+    }
+  });
+}
+
+chrome.tabs.onCreated.addListener((tab) => {
+  if (tab.id == null || tab.openerTabId == null) return;
+  serializeStateMutation(async () => {
+    const session = await loadActiveRecording();
+    if (!session) return;
+    const participantIds = Array.isArray(session.tabIds) && session.tabIds.length > 0
+      ? session.tabIds
+      : [session.tabId];
+    if (!participantIds.includes(tab.openerTabId!) || participantIds.includes(tab.id!)) return;
+    await saveActiveRecording({ ...session, tabIds: [...participantIds, tab.id!] });
+  });
+});
+
+chrome.tabs.onActivated.addListener(({ tabId }) => {
+  void activateRecordingTab(tabId);
+});
 
 /** Shared stop implementation for the privileged popup STOP_RECORDING and the
  *  tab-scoped HUD REQUEST_STOP_RECORDING. */
@@ -1975,7 +2034,7 @@ async function handleMessage(
       // D-3: clear any residual disk-backed checkpoint from a prior session
       // on this tab before starting fresh.
       await chrome.storage.local.remove(recordingCheckpointKey(tab.id)).catch(() => undefined);
-      await saveActiveRecording({ tabId: tab.id, startedAt: Date.now(), options });
+      await saveActiveRecording({ tabId: tab.id, tabIds: [tab.id], startedAt: Date.now(), options });
       // Injection failures are only fatal when the content script is
       // unreachable afterwards: a page that already auto-injected the script
       // (manifest document_idle) can reject a redundant executeScript while

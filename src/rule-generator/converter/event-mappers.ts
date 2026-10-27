@@ -72,6 +72,12 @@ function mapSubmitForm(event: SubmitFormEvent, ctx: EventMapContext): Action[] {
 }
 
 function mapClick(event: ClickEvent, ctx: EventMapContext): Action[] {
+  // A recorded _blank/Ctrl-click is represented as an ordered page transition
+  // during replay. This keeps the runner on its managed replay tab, where the
+  // following recorded page interactions can continue deterministically.
+  if (event.opensNewTab && event.destinationUrl) {
+    return [{ action: 'navigate', url: event.destinationUrl, waitUntil: 'load' }];
+  }
   const target = ctx.resolve(event.index, event.timestamp);
   return [{ action: 'click', target }];
 }

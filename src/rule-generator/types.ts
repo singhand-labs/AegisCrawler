@@ -98,11 +98,16 @@ export interface BaseEvent {
 export interface NavigateEvent extends BaseEvent {
   type: 'navigate';
   url: string;
+  /** True when this URL was reached by switching to another recorded browser tab. */
+  tabTransition?: boolean;
 }
 
 export interface ClickEvent extends BaseEvent {
   type: 'click';
   index: number;
+  /** Sanitized destination for an anchor activated into a separate tab/window. */
+  destinationUrl?: string;
+  opensNewTab?: boolean;
   annotation?: EventAnnotation;
 }
 

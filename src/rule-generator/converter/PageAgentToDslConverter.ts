@@ -51,6 +51,18 @@ function coalesceIncrementalInputTextEvents(events: PageAgentEvent[]): PageAgent
   return result;
 }
 
+function collapseOpenedTabTransition(events: PageAgentEvent[]): PageAgentEvent[] {
+  const result: PageAgentEvent[] = [];
+  for (let i = 0; i < events.length; i += 1) {
+    const event = events[i];
+    result.push(event);
+    if (event.type !== 'click' || !event.opensNewTab || !event.destinationUrl) continue;
+    const next = events[i + 1];
+    if (next?.type === 'navigate' && next.url === event.destinationUrl && next.tabTransition) i += 1;
+  }
+  return result;
+}
+
 function recordedHttpsDomains(recording: PageAgentRecording): string | string[] {
   const domains: string[] = [];
   const seen = new Set<string>();
@@ -74,6 +86,7 @@ function recordedHttpsDomains(recording: PageAgentRecording): string | string[] 
   add(recording.meta.startUrl);
   for (const event of recording.events) {
     if (event.type === 'navigate') add(event.url);
+    if (event.type === 'click' && event.opensNewTab) add(event.destinationUrl);
   }
   for (const snapshot of recording.snapshots) add(snapshot.url);
 
@@ -120,7 +133,9 @@ export function convert(recording: PageAgentRecording, options: ConvertOptions =
     resolve: (index, timestamp) => resolveTarget(recording, index, timestamp, registry, optimize),
   };
 
-  const events = mergeSubmitFormEvents(coalesceIncrementalInputTextEvents(recording.events));
+  const events = collapseOpenedTabTransition(
+    mergeSubmitFormEvents(coalesceIncrementalInputTextEvents(recording.events)),
+  );
 
   const actions: Action[] = hasAnnotations(recording)
     ? buildAnnotatedActions({ ...recording, events }, ctx)

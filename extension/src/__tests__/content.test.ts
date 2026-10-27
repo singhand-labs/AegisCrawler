@@ -367,6 +367,25 @@ describe('ContentRecorder', () => {
       });
     });
 
+    it('records the destination of links opened in another tab', () => {
+      document.body.innerHTML = '<a id="detail" target="_blank" href="https://example.com/detail">Open detail</a>';
+      document.getElementById('detail')!.addEventListener('click', (event) => event.preventDefault());
+      const recorder = new ContentRecorder({ captureSnapshotBeforeEachEvent: false });
+      recorder.start();
+
+      document.getElementById('detail')!.dispatchEvent(new MouseEvent('click', {
+        bubbles: true,
+        cancelable: true,
+        ctrlKey: true,
+      }));
+
+      expect(recorder.stop().events[0]).toMatchObject({
+        type: 'click',
+        opensNewTab: true,
+        destinationUrl: 'https://example.com/detail',
+      });
+    });
+
     it('keeps same-selector pagination links at distinct recording indexes', () => {
       document.body.innerHTML = `<ul class="pagination">
         <li><a href="?page_num=1"> 1 </a></li>

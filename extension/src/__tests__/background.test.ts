@@ -46,6 +46,8 @@ function createChromeMock() {
 
   const onUpdatedListeners: Array<(tabId: number, changeInfo: { status?: string }) => void> = [];
   const onRemovedListeners: Array<(tabId: number) => void> = [];
+  const onCreatedListeners: Array<(tab: ChromeTab) => void> = [];
+  const onActivatedListeners: Array<(activeInfo: { tabId: number; windowId: number }) => void> = [];
   const onAlarmListeners: Array<(alarm: { name: string }) => void | Promise<void>> = [];
   const onStartupListeners: Array<() => void | Promise<void>> = [];
 
@@ -55,6 +57,8 @@ function createChromeMock() {
     sessionStorage,
     onUpdatedListeners,
     onRemovedListeners,
+    onCreatedListeners,
+    onActivatedListeners,
     onAlarmListeners,
     onStartupListeners,
     mock: {
@@ -106,6 +110,20 @@ function createChromeMock() {
           removeListener: vi.fn((fn) => {
             const index = onRemovedListeners.indexOf(fn);
             if (index >= 0) onRemovedListeners.splice(index, 1);
+          }),
+        },
+        onCreated: {
+          addListener: vi.fn((fn) => onCreatedListeners.push(fn)),
+          removeListener: vi.fn((fn) => {
+            const index = onCreatedListeners.indexOf(fn);
+            if (index >= 0) onCreatedListeners.splice(index, 1);
+          }),
+        },
+        onActivated: {
+          addListener: vi.fn((fn) => onActivatedListeners.push(fn)),
+          removeListener: vi.fn((fn) => {
+            const index = onActivatedListeners.indexOf(fn);
+            if (index >= 0) onActivatedListeners.splice(index, 1);
           }),
         },
         sendMessage: vi.fn(async (_tabId: number, message: unknown, _options?: unknown): Promise<unknown> => {
@@ -730,6 +748,78 @@ describe('background service worker', () => {
       });
       expect(chromeMock.mock.tabs.sendMessage).toHaveBeenCalledWith(
         99, { action: 'DISCARD_RECORDING_HANDOFF' }, { frameId: 0 },
+      );
+    });
+
+    it('automatically hands recording ownership to opened tabs and back to participating tabs', async () => {
+      const fetchMock = global.fetch as ReturnType<typeof vi.fn>;
+      await configureRecordingV2(fetchMock);
+      const recording = makeV2Recording(false);
+      const sourceState = {
+        version: 1 as const, recordingFlag: true as const, recording,
+        options: { protocolVersion: '2.0.0' }, selectorToIndex: [], nextIndex: 1,
+        lastRecordedUrl: 'https://example.com/',
+      };
+      const destinationState = {
+        ...sourceState,
+        recording: { ...recording, events: [{ type: 'navigate' as const, url: 'https://example.com/detail', timestamp: 2 }] },
+        lastRecordedUrl: 'https://example.com/detail',
+      };
+      const returnedState = {
+        ...destinationState,
+        recording: { ...destinationState.recording, events: [...destinationState.recording.events, { type: 'navigate' as const, url: 'https://example.com/', timestamp: 3 }] },
+        lastRecordedUrl: 'https://example.com/',
+      };
+      chromeMock.mock.tabs.sendMessage.mockImplementation(async (tabId: number, message: unknown) => {
+        const action = (message as { action?: string }).action;
+        if (action === 'START_RECORDING') return { success: true, protocolVersion: '2.0.0' };
+        if (tabId === 42 && action === 'EXPORT_RECORDING_HANDOFF') return { success: true, state: sourceState };
+        if (tabId === 99 && action === 'EXPORT_RECORDING_HANDOFF') return { success: true, state: destinationState };
+        if (tabId === 99 && action === 'IMPORT_RECORDING_HANDOFF') return { success: true, state: destinationState };
+        if (tabId === 42 && action === 'IMPORT_RECORDING_HANDOFF') return { success: true, state: returnedState };
+        if (action === 'DISCARD_RECORDING_HANDOFF') return { success: true, active: false };
+        return { success: true };
+      });
+
+      await sendMessage({ action: 'START_RECORDING' });
+      chromeMock.onCreatedListeners.forEach((listener) => listener({
+        id: 99, openerTabId: 42, url: 'https://example.com/detail', status: 'complete',
+      }));
+      await flushAsync();
+
+      chromeMock.mock.tabs.get.mockResolvedValueOnce({
+        id: 99, url: 'https://example.com/detail', status: 'complete',
+      });
+      chromeMock.onActivatedListeners.forEach((listener) => listener({ tabId: 99, windowId: 1 }));
+      await flushAsync();
+      expect(chromeMock.sessionStorage.oc_recording_session).toMatchObject({
+        tabId: 99, tabIds: [42, 99], lastRecordedUrl: 'https://example.com/detail',
+      });
+      expect(chromeMock.mock.tabs.sendMessage).toHaveBeenCalledWith(
+        42, { action: 'DISCARD_RECORDING_HANDOFF' }, { frameId: 0 },
+      );
+
+      chromeMock.mock.tabs.get.mockResolvedValueOnce({ id: 42, url: 'https://example.com/', status: 'complete' });
+      chromeMock.onActivatedListeners.forEach((listener) => listener({ tabId: 42, windowId: 1 }));
+      await flushAsync();
+      expect(chromeMock.sessionStorage.oc_recording_session).toMatchObject({
+        tabId: 42, tabIds: [42, 99], lastRecordedUrl: 'https://example.com/',
+      });
+      expect(chromeMock.mock.tabs.sendMessage).toHaveBeenCalledWith(
+        99, { action: 'DISCARD_RECORDING_HANDOFF' }, { frameId: 0 },
+      );
+    });
+
+    it('does not move recording to an unrelated active tab', async () => {
+      await sendMessage({ action: 'START_RECORDING' });
+      chromeMock.mock.tabs.sendMessage.mockClear();
+
+      chromeMock.onActivatedListeners.forEach((listener) => listener({ tabId: 77, windowId: 1 }));
+      await flushAsync();
+
+      expect(chromeMock.sessionStorage.oc_recording_session).toMatchObject({ tabId: 42, tabIds: [42] });
+      expect(chromeMock.mock.tabs.sendMessage).not.toHaveBeenCalledWith(
+        42, { action: 'EXPORT_RECORDING_HANDOFF' }, { frameId: 0 },
       );
     });
 
