@@ -12,6 +12,7 @@ interface ChromeStorage {
 
 interface ChromeTab {
   id?: number;
+  windowId?: number;
   url?: string;
   pendingUrl?: string;
   status?: string;

@@ -751,7 +751,7 @@ describe('background service worker', () => {
       );
     });
 
-    it('automatically hands recording ownership to opened tabs and back to participating tabs', async () => {
+    it('follows the activated tab even if onCreated did not register it', async () => {
       const fetchMock = global.fetch as ReturnType<typeof vi.fn>;
       await configureRecordingV2(fetchMock);
       const recording = makeV2Recording(false);
@@ -781,12 +781,8 @@ describe('background service worker', () => {
         return { success: true };
       });
 
+      chromeMock.mock.tabs.query.mockResolvedValueOnce([{ id: 42, windowId: 1, url: 'https://example.com/' }]);
       await sendMessage({ action: 'START_RECORDING' });
-      chromeMock.onCreatedListeners.forEach((listener) => listener({
-        id: 99, openerTabId: 42, url: 'https://example.com/detail', status: 'complete',
-      }));
-      await flushAsync();
-
       chromeMock.mock.tabs.get.mockResolvedValueOnce({
         id: 99, url: 'https://example.com/detail', status: 'complete',
       });
@@ -812,7 +808,7 @@ describe('background service worker', () => {
 
     it('associates a noopener tab with the active recording owner', async () => {
       await sendMessage({ action: 'START_RECORDING' });
-      chromeMock.mock.tabs.query.mockResolvedValueOnce([{ id: 42, url: 'https://example.com/' }]);
+      // The active tab is tracked synchronously before Chrome switches focus.
 
       chromeMock.onCreatedListeners.forEach((listener) => listener({
         id: 99, url: 'https://example.com/detail', status: 'complete',
@@ -824,9 +820,21 @@ describe('background service worker', () => {
       });
     });
 
+    it('keeps a newly created tab as a participant before Chrome assigns its URL', async () => {
+      await sendMessage({ action: 'START_RECORDING' });
+      chromeMock.onCreatedListeners.forEach((listener) => listener({
+        id: 99, openerTabId: 42, status: 'loading',
+      }));
+      await flushAsync();
+
+      expect(chromeMock.sessionStorage.oc_recording_session).toMatchObject({
+        tabId: 42, tabIds: [42, 99],
+      });
+    });
+
     it('does not associate a noopener tab when the recording owner is no longer active', async () => {
       await sendMessage({ action: 'START_RECORDING' });
-      chromeMock.mock.tabs.query.mockResolvedValueOnce([{ id: 77, url: 'https://other.example/' }]);
+      chromeMock.onActivatedListeners.forEach((listener) => listener({ tabId: 77, windowId: 1 }));
 
       chromeMock.onCreatedListeners.forEach((listener) => listener({
         id: 99, url: 'https://example.com/detail', status: 'complete',
