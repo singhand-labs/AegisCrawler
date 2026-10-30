@@ -52,6 +52,43 @@ describe('PageAgentToDslConverter', () => {
     expect(rule.steps[4]).toEqual({ action: 'extractText', name: 'title', target: { $ref: 'el3' } });
   });
 
+  it('replays a recorded new-tab link as a managed navigation and collapses its handoff event', () => {
+    const recording = makeRecording();
+    recording.events = [
+      {
+        type: 'click', index: 12, timestamp: 2, opensNewTab: true,
+        destinationUrl: 'https://detail.example.com/item/1',
+      },
+      {
+        type: 'navigate', url: 'https://detail.example.com/item/1', timestamp: 3,
+        tabTransition: true,
+      },
+      { type: 'click', index: 20, timestamp: 4 },
+    ];
+    recording.snapshots = [
+      {
+        timestamp: 2, url: recording.meta.startUrl,
+        selectorMap: {
+          12: { index: 12, tagName: 'a', selector: '.result-link', boundingRect: { x: 0, y: 0, width: 10, height: 10 } },
+        },
+      },
+      {
+        timestamp: 4, url: 'https://detail.example.com/item/1',
+        selectorMap: {
+          20: { index: 20, tagName: 'h1', selector: '.detail-title', boundingRect: { x: 0, y: 0, width: 10, height: 10 } },
+        },
+      },
+    ];
+
+    const rule = convert(recording, { guessVariables: false });
+
+    expect(rule.domain).toEqual(['mall.example.com', 'detail.example.com']);
+    expect(rule.steps).toEqual([
+      { action: 'navigate', url: 'https://detail.example.com/item/1', waitUntil: 'load' },
+      { action: 'click', target: { $ref: 'el1' } },
+    ]);
+  });
+
   it('preserves indexed container scroll targets', () => {
     const recording = makeRecording();
     recording.events = [{

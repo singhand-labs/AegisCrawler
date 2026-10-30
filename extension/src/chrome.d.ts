@@ -12,9 +12,11 @@ interface ChromeStorage {
 
 interface ChromeTab {
   id?: number;
+  windowId?: number;
   url?: string;
   pendingUrl?: string;
   status?: string;
+  openerTabId?: number;
 }
 
 interface ChromeWebNavigationFrame {
@@ -64,6 +66,14 @@ interface ChromeTabs {
   onRemoved: {
     addListener(callback: (tabId: number, removeInfo: { windowId: number; isWindowClosing: boolean }) => void): void;
     removeListener(callback: (tabId: number, removeInfo: { windowId: number; isWindowClosing: boolean }) => void): void;
+  };
+  onCreated: {
+    addListener(callback: (tab: ChromeTab) => void): void;
+    removeListener(callback: (tab: ChromeTab) => void): void;
+  };
+  onActivated: {
+    addListener(callback: (activeInfo: { tabId: number; windowId: number }) => void): void;
+    removeListener(callback: (activeInfo: { tabId: number; windowId: number }) => void): void;
   };
 }
 

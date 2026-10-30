@@ -112,6 +112,10 @@ interface DSLReplayResponse {
 
 interface ActiveRecordingSession {
   tabId: number;
+  /** Keep automatic tab following inside the window where recording began. */
+  windowId?: number;
+  /** Browser tabs explicitly joined to this recording, including its current owner. */
+  tabIds?: number[];
   startedAt: number;
   options: Record<string, unknown>;
   selectorToIndex?: Array<[string, { index: number; lastUsedAt: number }]>;
@@ -137,6 +141,9 @@ let recordingState: RecordingState = 'idle';
 let serverConfig: ServerConfig = { baseUrl: '' };
 let serverKeys: ServerKeys = {};
 let activeRecording: ActiveRecordingSession | null = null;
+// Capture the active tab synchronously in tabs.onCreated handlers. Querying
+// Chrome later is racy: by then, a noopener tab may already be active.
+let lastKnownActiveTabId: number | null = null;
 let lastCapabilities: RecordingCapabilities | null = null;
 const RECORDING_SESSION_KEY = 'oc_recording_session';
 // Wizard tab id for openIntentWizardIfAbsent dedup (tabs permission-free).
@@ -1601,12 +1608,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 // completion before the next state-mutating handler starts, eliminating
 // read-modify-write races on activeRecording / activeReplay / serverConfig.
 let stateMutationChain: Promise<void> = Promise.resolve();
-function serializeStateMutation(work: () => Promise<void>): void {
+function serializeStateMutation<T = void>(work: () => Promise<T>): Promise<T> {
   // Swallow prior rejection so a failing handler does not permanently break
   // the queue; then chain the new work.
-  stateMutationChain = stateMutationChain
+  const result = stateMutationChain
     .catch(() => undefined)
     .then(work);
+  stateMutationChain = result.then(() => undefined, () => undefined);
+  return result;
 }
 
 // Actions whose handlers read and mutate shared in-memory state
@@ -1633,6 +1642,118 @@ const STATE_MUTATING_ACTIONS = new Set([
   'GENERATE_DSL_FROM_INTENT',
   'DOWNLOAD_RULE',
 ]);
+
+/** Transfer recorder state only among tabs joined to the active workflow. */
+async function activateRecordingTab(tabId: number, windowId?: number): Promise<void> {
+  const isParticipant = await serializeStateMutation(async () => {
+    let session = await loadActiveRecording();
+    if (!session) return false;
+    if (session.windowId == null) {
+      // Recover the initial window id for sessions created before this field
+      // was added, or browsers that omitted it from the initial tab query.
+      const ownerTab = await chrome.tabs.get(session.tabId).catch(() => undefined);
+      if (ownerTab?.windowId != null) {
+        session = { ...session, windowId: ownerTab.windowId };
+        await saveActiveRecording(session);
+      }
+    }
+    if (session.windowId == null || windowId == null || session.windowId !== windowId) return false;
+    const participantIds = session && Array.isArray(session.tabIds) && session.tabIds.length > 0
+      ? session.tabIds
+      : session ? [session.tabId] : [];
+    if (participantIds.includes(tabId)) return true;
+    // Activation itself is the reliable signal that the user moved to a new
+    // tab. onCreated/openerTabId can be missing or race the focus event.
+    // Enroll any activated tab in the recording window; transferActiveRecording
+    // still rejects non-web pages and waits for a web page to finish loading.
+    if (session.windowId == null || windowId == null) return false;
+    await saveActiveRecording({ ...session, tabIds: [...participantIds, tabId] });
+    return true;
+  });
+  if (!isParticipant) return;
+
+  let target: ChromeTab;
+  try {
+    target = await chrome.tabs.get(tabId);
+    if (target.status !== 'complete') {
+      await waitForTabLoad(tabId, TAB_LOAD_TIMEOUT_MS);
+      target = await chrome.tabs.get(tabId);
+    }
+  } catch (error) {
+    console.warn('[background] recording tab handoff target did not finish loading:', error);
+    return;
+  }
+
+  // Do not hold the serialized state queue while waiting for page load: stop,
+  // checkpoint and service-worker lifecycle messages must remain responsive.
+  await serializeStateMutation(async () => {
+    const session = await loadActiveRecording();
+    const participantIds = session && Array.isArray(session.tabIds) && session.tabIds.length > 0
+      ? session.tabIds
+      : session ? [session.tabId] : [];
+    if (!session || session.tabId === tabId || !participantIds.includes(tabId)) return;
+    const transferred = await transferActiveRecording(session, target);
+    if (!transferred.success) {
+      console.warn('[background] recording tab handoff was not completed:', transferred.error);
+      await saveActiveRecording({
+        ...session,
+        statusMessage: `跨标签页切换失败：${transferred.error ?? '原因未知'}`,
+      });
+    } else if (transferred.session?.statusMessage) {
+      await saveActiveRecording({ ...transferred.session, statusMessage: undefined });
+    }
+  });
+}
+
+chrome.tabs.onCreated.addListener((tab) => {
+  if (tab.id == null) return;
+  const activeTabAtCreation = lastKnownActiveTabId;
+  serializeStateMutation(async () => {
+    const session = await loadActiveRecording();
+    if (!session) return;
+    const participantIds = Array.isArray(session.tabIds) && session.tabIds.length > 0
+      ? session.tabIds
+      : [session.tabId];
+    if (participantIds.includes(tab.id!)) return;
+
+    let openerTabId = tab.openerTabId;
+    // A user-created tab (Ctrl+T or the + button) has no opener. Treat new
+    // tabs created in the recording window as candidates so activation can
+    // hand off recording once the user navigates to a web page.
+    if (session.windowId != null && tab.windowId === session.windowId) {
+      openerTabId = session.tabId;
+    }
+    if (openerTabId == null) {
+      // Some sites open links with noopener, so Chrome omits openerTabId.
+      // Use the active tab observed at the instant of creation; querying later
+      // can already return the newly opened tab and lose the source relation.
+      if (activeTabAtCreation != null && participantIds.includes(activeTabAtCreation)) {
+        openerTabId = activeTabAtCreation;
+      }
+    }
+    if (openerTabId == null || !participantIds.includes(openerTabId)) return;
+    // tabs.onCreated can fire before Chrome has assigned url/pendingUrl (for
+    // example, target=_blank links that first create about:blank). Keep the
+    // tab as a candidate based on its opener/foreground relationship, then
+    // validate its final URL in transferActiveRecording before handing state
+    // to its content script.
+    await saveActiveRecording({ ...session, tabIds: [...participantIds, tab.id!] });
+    const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true }).catch(() => []);
+    if (activeTab?.id === tab.id) void activateRecordingTab(tab.id!, tab.windowId);
+  });
+});
+
+chrome.tabs.onActivated.addListener(({ tabId, windowId }) => {
+  lastKnownActiveTabId = tabId;
+  void activateRecordingTab(tabId, windowId);
+});
+
+chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+  if (changeInfo.status !== 'complete') return;
+  void chrome.tabs.query({ active: true, currentWindow: true }).then(([activeTab]) => {
+    if (activeTab?.id === tabId) void activateRecordingTab(tabId, activeTab.windowId);
+  }).catch(() => undefined);
+});
 
 /** Shared stop implementation for the privileged popup STOP_RECORDING and the
  *  tab-scoped HUD REQUEST_STOP_RECORDING. */
@@ -1971,11 +2092,12 @@ async function handleMessage(
         return { success: false, error: '当前页面不支持录制：请切换到普通网页（http/https）后再开始' };
       }
       const options = await resolveRecordingOptions(message.payload);
+      lastKnownActiveTabId = tab.id;
       await recordingStore.remove();
       // D-3: clear any residual disk-backed checkpoint from a prior session
       // on this tab before starting fresh.
       await chrome.storage.local.remove(recordingCheckpointKey(tab.id)).catch(() => undefined);
-      await saveActiveRecording({ tabId: tab.id, startedAt: Date.now(), options });
+      await saveActiveRecording({ tabId: tab.id, windowId: tab.windowId, tabIds: [tab.id], startedAt: Date.now(), options });
       // Injection failures are only fatal when the content script is
       // unreachable afterwards: a page that already auto-injected the script
       // (manifest document_idle) can reject a redundant executeScript while

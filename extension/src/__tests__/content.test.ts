@@ -367,6 +367,25 @@ describe('ContentRecorder', () => {
       });
     });
 
+    it('records the destination of links opened in another tab', () => {
+      document.body.innerHTML = '<a id="detail" target="_blank" href="https://example.com/detail">Open detail</a>';
+      document.getElementById('detail')!.addEventListener('click', (event) => event.preventDefault());
+      const recorder = new ContentRecorder({ captureSnapshotBeforeEachEvent: false });
+      recorder.start();
+
+      document.getElementById('detail')!.dispatchEvent(new MouseEvent('click', {
+        bubbles: true,
+        cancelable: true,
+        ctrlKey: true,
+      }));
+
+      expect(recorder.stop().events[0]).toMatchObject({
+        type: 'click',
+        opensNewTab: true,
+        destinationUrl: 'https://example.com/detail',
+      });
+    });
+
     it('keeps same-selector pagination links at distinct recording indexes', () => {
       document.body.innerHTML = `<ul class="pagination">
         <li><a href="?page_num=1"> 1 </a></li>
@@ -2177,6 +2196,27 @@ describe('ContentRecorder', () => {
       } finally {
         vi.useRealTimers();
       }
+    });
+
+    it('ignores clicks on the recorder HUD', async () => {
+      document.body.innerHTML = '<button id="page-action">Page action</button>';
+      (globalThis as Record<string, unknown>).chrome = {
+        runtime: { sendMessage: vi.fn(async () => ({ success: true })) },
+      };
+      const recorder = new ContentRecorder({
+        protocolVersion: '2.0.0',
+        captureSnapshotBeforeEachEvent: false,
+        enforceIsTrusted: false,
+      });
+      recorder.start();
+
+      const host = document.querySelector<HTMLElement>('[data-aegis-recording-hud]');
+      const stopButton = host?.shadowRoot?.querySelector<HTMLButtonElement>('[data-hud="stop"]');
+      if (!stopButton) throw new Error('recorder HUD stop button missing');
+      stopButton.dispatchEvent(new MouseEvent('click', { bubbles: true, composed: true }));
+      await flushPromises();
+
+      expect(recorder.stop().events).toEqual([]);
     });
 
     it('keeps a full snapshot when the page content changes between actions', async () => {

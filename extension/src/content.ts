@@ -50,6 +50,7 @@ function isRestrictedUrl(url: string): boolean {
 }
 
 const IS_TOP_FRAME = window.top === window.self;
+const RECORDER_OWNED_UI_SELECTOR = '[data-aegis-recording-hud], [data-aegis-page-mark-overlay]';
 
 function escapeIdentifier(value: string): string {
   if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') {
@@ -607,7 +608,7 @@ export class ContentRecorder {
     if (!state?.recording || state.recording.version !== '2.0.0' || state.recording.termination) return null;
     if (this.recordingFlag) this.discardRecordingHandoff();
     if (!this.restorePersistedState(state)) return null;
-    this.handleNavigate();
+    this.handleNavigate(undefined, true);
     await this.eventQueue;
     return this.exportRecordingHandoff();
   }
@@ -1661,8 +1662,17 @@ export class ContentRecorder {
     this.listeners.push({ target, event, handler, options });
   }
 
+  private isRecorderOwnedUiEvent(event: Event): boolean {
+    const path = typeof event.composedPath === 'function' ? event.composedPath() : [];
+    if (path.some((node) => node instanceof Element && node.matches(RECORDER_OWNED_UI_SELECTOR))) {
+      return true;
+    }
+    return event.target instanceof Element && event.target.closest(RECORDER_OWNED_UI_SELECTOR) !== null;
+  }
+
   private handleClick = (event: Event): void => {
-    if (!this.recordingFlag || (this.options.enforceIsTrusted && !event.isTrusted)) {
+    if (!this.recordingFlag || this.isRecorderOwnedUiEvent(event)
+      || (this.options.enforceIsTrusted && !event.isTrusted)) {
       return;
     }
     const el = this.resolveInteractableClickTarget(event);
@@ -1698,7 +1708,7 @@ export class ContentRecorder {
           this.captureLocalSnapshot(timestamp, 'before-action', this.recording!.events.length),
         );
       }
-      this.recordEventSync({ type: 'click', index, timestamp });
+      this.recordEventSync(this.createClickEvent(el, event, index, timestamp));
       return;
     }
 
@@ -1707,7 +1717,7 @@ export class ContentRecorder {
       : Promise.resolve();
     this.enqueueEvent(async () => {
       this.linkSnapshotToNextEvent(await snapshotPromise);
-      this.recording!.events.push({ type: 'click', index, timestamp });
+      this.recording!.events.push(this.createClickEvent(el, event, index, timestamp));
     });
   };
 
@@ -1727,6 +1737,30 @@ export class ContentRecorder {
       element = element.parentElement;
     }
     return null;
+  }
+
+  private createClickEvent(el: Element, event: Event, index: number, timestamp: number): PageAgentEvent {
+    const anchor = el.closest('a[href]') as HTMLAnchorElement | null;
+    if (!anchor) return { type: 'click', index, timestamp };
+    const mouse = event as MouseEvent;
+    const opensNewTab = anchor.target.trim().toLowerCase() === '_blank'
+      || mouse.button === 1
+      || mouse.ctrlKey
+      || mouse.metaKey;
+    if (!opensNewTab) return { type: 'click', index, timestamp };
+    try {
+      const destination = new URL(anchor.href, window.location.href);
+      if ((destination.protocol !== 'http:' && destination.protocol !== 'https:')
+        || destination.username || destination.password) {
+        return { type: 'click', index, timestamp };
+      }
+      return {
+        type: 'click', index, timestamp, opensNewTab: true,
+        destinationUrl: sanitizeRecordingUrl(destination.href),
+      };
+    } catch {
+      return { type: 'click', index, timestamp };
+    }
   }
 
   private handleInput = (event: Event): void => {
@@ -1943,7 +1977,7 @@ export class ContentRecorder {
       : Promise.resolve();
     this.enqueueEvent(async () => {
       this.linkSnapshotToNextEvent(await snapshotPromise);
-      this.recording!.events.push({ type: 'click', index, timestamp });
+      this.recording!.events.push(this.createClickEvent(el, event, index, timestamp));
     });
   };
 
@@ -2027,7 +2061,7 @@ export class ContentRecorder {
     return defaultSubmitter === el;
   }
 
-  private handleNavigate = (event?: Event): void => {
+  private handleNavigate = (event?: Event, tabTransition = false): void => {
     // H-6: reject synthetic navigation events dispatched by the page.
     if (event && this.options.enforceIsTrusted && !event.isTrusted) {
       return;
@@ -2064,7 +2098,7 @@ export class ContentRecorder {
       } catch (err) {
         console.warn('[ContentRecorder] navigate snapshot failed; recording event without it:', err);
       }
-      this.recording!.events.push({ type: 'navigate', url, timestamp });
+      this.recording!.events.push({ type: 'navigate', url, timestamp, ...(tabTransition ? { tabTransition: true } : {}) });
       // Navigations are rare and cross-origin documents are short-lived: a
       // forced background checkpoint here lets the event survive document
       // teardown even when the beforeunload async flush is dropped.
