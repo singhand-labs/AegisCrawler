@@ -50,6 +50,7 @@ function isRestrictedUrl(url: string): boolean {
 }
 
 const IS_TOP_FRAME = window.top === window.self;
+const RECORDER_OWNED_UI_SELECTOR = '[data-aegis-recording-hud], [data-aegis-page-mark-overlay]';
 
 function escapeIdentifier(value: string): string {
   if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') {
@@ -1661,8 +1662,17 @@ export class ContentRecorder {
     this.listeners.push({ target, event, handler, options });
   }
 
+  private isRecorderOwnedUiEvent(event: Event): boolean {
+    const path = typeof event.composedPath === 'function' ? event.composedPath() : [];
+    if (path.some((node) => node instanceof Element && node.matches(RECORDER_OWNED_UI_SELECTOR))) {
+      return true;
+    }
+    return event.target instanceof Element && event.target.closest(RECORDER_OWNED_UI_SELECTOR) !== null;
+  }
+
   private handleClick = (event: Event): void => {
-    if (!this.recordingFlag || (this.options.enforceIsTrusted && !event.isTrusted)) {
+    if (!this.recordingFlag || this.isRecorderOwnedUiEvent(event)
+      || (this.options.enforceIsTrusted && !event.isTrusted)) {
       return;
     }
     const el = this.resolveInteractableClickTarget(event);

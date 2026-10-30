@@ -2198,6 +2198,27 @@ describe('ContentRecorder', () => {
       }
     });
 
+    it('ignores clicks on the recorder HUD', async () => {
+      document.body.innerHTML = '<button id="page-action">Page action</button>';
+      (globalThis as Record<string, unknown>).chrome = {
+        runtime: { sendMessage: vi.fn(async () => ({ success: true })) },
+      };
+      const recorder = new ContentRecorder({
+        protocolVersion: '2.0.0',
+        captureSnapshotBeforeEachEvent: false,
+        enforceIsTrusted: false,
+      });
+      recorder.start();
+
+      const host = document.querySelector<HTMLElement>('[data-aegis-recording-hud]');
+      const stopButton = host?.shadowRoot?.querySelector<HTMLButtonElement>('[data-hud="stop"]');
+      if (!stopButton) throw new Error('recorder HUD stop button missing');
+      stopButton.dispatchEvent(new MouseEvent('click', { bubbles: true, composed: true }));
+      await flushPromises();
+
+      expect(recorder.stop().events).toEqual([]);
+    });
+
     it('keeps a full snapshot when the page content changes between actions', async () => {
       document.body.innerHTML = '<p id="state">v1</p><button id="mut">Mutate</button>';
       document.getElementById('mut')!.addEventListener('click', () => {
